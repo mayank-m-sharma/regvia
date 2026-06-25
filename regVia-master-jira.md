@@ -1,0 +1,1366 @@
+# RegVia — Compliance Copilot: Master Jira Spec
+
+> **Spec-Driven Development (SDD)** — All implementation must trace back to a ticket here.
+> Every ticket is atomic, sequenced, and implementation-ready.
+
+---
+
+## Epic Map
+
+| ID | Epic | Area |
+|----|------|------|
+| E1 | Repo & Tooling Bootstrap | Infra |
+| E2 | Database & Storage Layer | Backend |
+| E3 | Document Upload & Processing | Backend |
+| E4 | RAG Pipeline | Backend/AI |
+| E5 | Compliance Summary | Backend/AI |
+| E6 | Streaming & Background Jobs | Backend |
+| E7 | Observability & Logging | Backend/AI |
+| E8 | Frontend Foundation | Frontend |
+| E9 | Document Feature (Upload UI) | Frontend |
+| E10 | Chat Feature (Q&A UI) | Frontend |
+| E11 | Summary Feature (Summary UI) | Frontend |
+| E12 | Testing | Full-Stack |
+| E13 | Deployment & CI/CD | Infra |
+
+---
+
+## E1 — Repo & Tooling Bootstrap
+
+---
+
+### REGVIA-001 · Initialize monorepo structure
+
+**Problem Statement**
+No project exists yet. We need a clean, reproducible workspace before any code is written.
+
+**User Story**
+As an engineer, I need a versioned monorepo with consistent tooling so I can develop without environment drift.
+
+**Description**
+Create the `regVia/` root directory containing `frontend/`, `backend/`, and `infra/` sub-repos. Each sub-repo gets its own `package.json` / `pyproject.toml`. Root-level `docker-compose.yml` wires local services together.
+
+**Technical Details**
+- Root: `regVia/`
+  - `frontend/` — Vite + React 18 + TypeScript 5
+  - `backend/` — Python 3.12, FastAPI, uv for dependency management
+  - `infra/` — Terraform (AWS target), Dockerfiles
+- Root `docker-compose.yml` services: `postgres`, `backend`, `frontend`
+- `.gitignore` at root covering node_modules, `__pycache__`, `.env*`, `*.pyc`
+- `.env.example` files in both `frontend/` and `backend/` listing every required env var (no values)
+
+**Acceptance Criteria**
+- [ ] `docker compose up` starts all services without errors
+- [ ] `frontend/` TypeScript compiles with zero errors
+- [ ] `backend/` FastAPI app boots and returns 200 on `GET /health`
+- [ ] No secrets committed — `.env` files are gitignored
+
+**Dependencies**
+None
+
+---
+
+### REGVIA-002 · Configure frontend toolchain
+
+**Problem Statement**
+Frontend needs enforced code quality gates before any feature work begins.
+
+**User Story**
+As an engineer, I need lint, format, and type-check to run automatically on commit so the codebase stays consistent.
+
+**Description**
+Configure ESLint, Prettier, and TypeScript strict mode in the `frontend/` directory. Pre-commit enforcement is handled by the root-level `pre-commit` config (see REGVIA-003) — no Husky in the frontend.
+
+**Technical Details**
+- ESLint: `eslint-config-airbnb-typescript` + `eslint-plugin-react-hooks` + `eslint-plugin-jsx-a11y`
+- Prettier: single quotes, 2-space indent, trailing commas ES5
+- `tsconfig.json`: `strict: true`, `noUncheckedIndexedAccess: true`
+- Path aliases: `@/` → `src/`
+- Scripts: `pnpm lint` (`eslint . --max-warnings 0`), `pnpm type-check` (`tsc --noEmit`)
+
+**Acceptance Criteria**
+- [ ] `pnpm lint` exits 0 on clean code
+- [ ] `pnpm type-check` exits 0
+- [ ] Prettier formats on save (`.vscode/settings.json` included)
+
+**Dependencies**
+REGVIA-001
+
+---
+
+### REGVIA-003 · Configure backend toolchain + root pre-commit hooks
+
+**Problem Statement**
+Python projects without enforced formatting and type checking accumulate inconsistencies fast. In a monorepo, git hooks must live at the root — not inside a sub-directory — because there is only one `.git/`.
+
+**User Story**
+As an engineer, I need ruff, mypy, and pre-commit hooks covering both frontend and backend so the entire codebase is consistently typed and formatted on every commit.
+
+**Description**
+Configure `ruff` (lint + format) and `mypy` (strict) in `backend/`. Place a single `.pre-commit-config.yaml` at the **monorepo root** that enforces both backend (ruff, mypy) and frontend (eslint, tsc) quality gates.
+
+**Technical Details**
+- `ruff` replaces flake8 + isort + black; target Python 3.12
+- `mypy`: `strict = true`, `ignore_missing_imports = true` for third-party stubs
+- `pyproject.toml` defines all backend tool configs
+- `uv` for dependency management (`uv.lock` committed)
+- Root `.pre-commit-config.yaml` with `local` hooks:
+  - `ruff-check`: `cd backend && uv run ruff check --fix` (files: `^backend/.*\.py$`)
+  - `ruff-format`: `cd backend && uv run ruff format` (files: `^backend/.*\.py$`)
+  - `mypy`: `cd backend && uv run mypy .` (files: `^backend/.*\.py$`)
+  - `eslint`: `cd frontend && pnpm lint` (files: `^frontend/.*\.(ts|tsx)$`)
+  - `tsc`: `cd frontend && pnpm type-check` (files: `^frontend/.*\.(ts|tsx)$`)
+- Each hook is scoped by `files:` pattern so only relevant hooks fire per changed file
+
+**Acceptance Criteria**
+- [ ] `uv run ruff check .` exits 0 in `backend/`
+- [ ] `uv run mypy .` exits 0 in `backend/`
+- [ ] `pre-commit run --all-files` exits 0 from repo root
+- [ ] Committing a `.py` file with a type error is blocked
+- [ ] Committing a `.tsx` file with a TS error is blocked
+- [ ] `uv run pytest` discovers tests in `backend/tests/`
+
+**Dependencies**
+REGVIA-001
+
+---
+
+## E2 — Database & Storage Layer
+
+---
+
+### REGVIA-004 · PostgreSQL schema + pgvector setup
+
+**Problem Statement**
+The RAG pipeline needs a place to store document metadata, raw text chunks, and vector embeddings in a single durable store.
+
+**User Story**
+As a system, I need a PostgreSQL database with pgvector enabled so I can persist documents, chunks, and embeddings atomically.
+
+**Description**
+Define the initial Alembic migration that creates all tables the system needs. No ORM models exist yet — this ticket creates them all.
+
+**Technical Details**
+
+Schema:
+
+```sql
+-- documents
+CREATE TABLE documents (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filename    TEXT NOT NULL,
+  s3_key      TEXT NOT NULL UNIQUE,
+  size_bytes  INTEGER NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'pending',  -- pending | processing | ready | failed
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- chunks
+CREATE TABLE chunks (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id  UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  chunk_index  INTEGER NOT NULL,
+  page_number  INTEGER,
+  text         TEXT NOT NULL,
+  token_count  INTEGER NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- embeddings
+CREATE TABLE embeddings (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chunk_id   UUID NOT NULL REFERENCES chunks(id) ON DELETE CASCADE UNIQUE,
+  embedding  vector(1536) NOT NULL  -- text-embedding-3-small dimension
+);
+
+-- chat_sessions
+CREATE TABLE chat_sessions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id  UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- messages
+CREATE TABLE messages (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id   UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  role         TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content      TEXT NOT NULL,
+  citations    JSONB,  -- [{chunk_id, page_number, excerpt}]
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+- Enable `pgvector` extension via migration: `CREATE EXTENSION IF NOT EXISTS vector`
+- HNSW index on `embeddings.embedding` for approximate nearest-neighbour search
+- SQLAlchemy 2.x async models mirror the schema
+- Alembic for migrations; `alembic upgrade head` in Docker entrypoint
+
+**Acceptance Criteria**
+- [ ] `alembic upgrade head` runs without error on a fresh database
+- [ ] `alembic downgrade -1` reverses the migration cleanly
+- [ ] pgvector similarity query returns results within 100ms on 10k rows (local benchmark)
+- [ ] All foreign key cascades behave correctly (deleting a document cascades to chunks → embeddings)
+
+**Dependencies**
+REGVIA-001
+
+---
+
+### REGVIA-005 · AWS S3 bucket for PDF storage
+
+**Problem Statement**
+PDFs must be stored durably outside the application server so the backend is stateless.
+
+**User Story**
+As the system, I need an S3 bucket to store raw uploaded PDFs so they can be re-processed without re-upload.
+
+**Description**
+Provision an S3 bucket via Terraform in `infra/`. Backend gets an IAM role with least-privilege S3 access. Local development uses LocalStack or MinIO via docker-compose.
+
+**Technical Details**
+- Terraform resource: `aws_s3_bucket` with versioning enabled, SSE-S3 encryption, public access blocked
+- IAM policy: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` scoped to bucket ARN
+- Local dev: MinIO service in `docker-compose.yml`, same boto3 client pointed at `http://localhost:9000`
+- Env vars: `S3_BUCKET_NAME`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (LocalStack values for dev)
+- Backend uploads use presigned URLs for direct-to-S3 upload (avoids routing binary through FastAPI)
+
+**Acceptance Criteria**
+- [ ] `terraform plan` shows exactly the expected resources, no drift
+- [ ] File uploaded via presigned URL is retrievable via `s3.get_object`
+- [ ] Backend cannot list bucket contents (IAM enforced)
+- [ ] MinIO works as drop-in for local dev without code changes
+
+**Dependencies**
+REGVIA-001
+
+---
+
+## E3 — Document Upload & Processing
+
+---
+
+### REGVIA-006 · POST /api/v1/documents — upload endpoint
+
+**Problem Statement**
+Users need a way to submit PDFs to the system. The API must accept the file, validate it, store it in S3, and create a database record before returning.
+
+**User Story**
+As a user uploading a PDF, I want a fast response confirming my document was received, even if processing takes longer.
+
+**Description**
+Implement the upload endpoint. It returns a document ID immediately; processing is enqueued as a background task (REGVIA-007).
+
+**Technical Details**
+
+Request:
+```
+POST /api/v1/documents
+Content-Type: multipart/form-data
+Body: file (PDF, max 50MB)
+```
+
+Response:
+```json
+{
+  "data": {
+    "document_id": "uuid",
+    "filename": "gdpr-policy.pdf",
+    "status": "pending",
+    "created_at": "ISO8601"
+  },
+  "error": null
+}
+```
+
+Validation (Pydantic):
+- MIME type must be `application/pdf`
+- File size ≤ 50MB
+- Filename sanitized (alphanumeric, hyphens, underscores, dot-pdf only)
+
+Processing:
+1. Validate file
+2. Generate `s3_key = f"documents/{document_id}/{sanitized_filename}"`
+3. Upload to S3
+4. Insert `documents` row with `status = 'pending'`
+5. Enqueue background processing task (FastAPI `BackgroundTasks`)
+6. Return 202 with document record
+
+Error codes:
+- `INVALID_FILE_TYPE` — not a PDF
+- `FILE_TOO_LARGE` — exceeds 50MB
+- `UPLOAD_FAILED` — S3 error
+
+**Acceptance Criteria**
+- [ ] Returns 202 within 2s for a 10MB PDF
+- [ ] Document row created in DB with `status = 'pending'`
+- [ ] PDF stored at correct S3 key
+- [ ] Rejects non-PDF with 422 and `INVALID_FILE_TYPE` error code
+- [ ] Rejects files > 50MB with 413
+
+**Dependencies**
+REGVIA-004, REGVIA-005
+
+---
+
+### REGVIA-007 · Background PDF processing pipeline
+
+**Problem Statement**
+Parsing a PDF, chunking text, and generating embeddings takes 10–60 seconds — far too long for a synchronous HTTP response.
+
+**User Story**
+As a user, I want the system to process my document in the background so I can see a progress indicator rather than a stalled request.
+
+**Description**
+Implement the async processing pipeline that runs after upload. Updates `document.status` as it progresses so the frontend can poll for completion.
+
+**Technical Details**
+
+Pipeline steps (executed in order, each wrapped in try/except that sets `status = 'failed'` on error):
+
+**Step 1 — Extract text**
+- Library: `pdfplumber` (better table/layout handling than pypdf)
+- Extract text per page, preserve page numbers
+- Skip pages with < 20 characters (blank/image-only)
+
+**Step 2 — Chunking**
+- Strategy: semantic chunking with fixed-size fallback
+- Chunk size: 512 tokens (measured via `tiktoken cl100k_base`)
+- Overlap: 50 tokens (preserves context across chunk boundaries)
+- Each chunk records: `document_id`, `chunk_index`, `page_number`, `text`, `token_count`
+- Minimum chunk size: 100 tokens (discard smaller)
+
+**Step 3 — Embedding**
+- Model: `text-embedding-3-small` (1536 dims, cost-effective)
+- Batch size: 100 chunks per API call
+- Store each embedding in `embeddings` table linked to its chunk
+
+**Step 4 — Status update**
+- Set `document.status = 'ready'`
+- Set `document.updated_at = NOW()`
+
+Status transitions: `pending` → `processing` → `ready` | `failed`
+
+**Acceptance Criteria**
+- [ ] A 20-page PDF reaches `status = 'ready'` within 60s
+- [ ] Chunk count is ≥ 1 and each chunk has a corresponding embedding
+- [ ] Page numbers are preserved and correct
+- [ ] Processing failure sets `status = 'failed'` with structured log entry
+- [ ] Re-triggering processing on an already-`ready` document is a no-op (idempotent)
+
+**Dependencies**
+REGVIA-006
+
+---
+
+### REGVIA-008 · GET /api/v1/documents/{id} — status polling endpoint
+
+**Problem Statement**
+The frontend needs to know when processing is complete to enable the chat and summary features.
+
+**User Story**
+As a user waiting for my document to process, I want to poll the status so the UI can show a progress state.
+
+**Description**
+Lightweight read endpoint that returns current document status and metadata.
+
+**Technical Details**
+
+Response:
+```json
+{
+  "data": {
+    "document_id": "uuid",
+    "filename": "gdpr-policy.pdf",
+    "status": "ready",
+    "chunk_count": 84,
+    "created_at": "ISO8601",
+    "updated_at": "ISO8601"
+  },
+  "error": null
+}
+```
+
+- `chunk_count` is a COUNT query on `chunks` table (cached on `document` row after processing)
+- Returns 404 with `DOCUMENT_NOT_FOUND` if ID does not exist
+
+**Acceptance Criteria**
+- [ ] Returns correct `status` at each pipeline stage
+- [ ] `chunk_count` matches actual chunk rows
+- [ ] 404 on unknown ID
+- [ ] Response time < 50ms (single indexed lookup)
+
+**Dependencies**
+REGVIA-007
+
+---
+
+## E4 — RAG Pipeline
+
+---
+
+### REGVIA-009 · Retrieval service — semantic search over chunks
+
+**Problem Statement**
+The RAG pipeline needs to find the most semantically relevant document chunks for any user question before sending them to the LLM.
+
+**User Story**
+As the AI system, I need to retrieve the top-k most relevant chunks for a query so I can ground my response in the document.
+
+**Description**
+Implement a retrieval service that embeds the query and runs cosine similarity search against pgvector.
+
+**Technical Details**
+
+```python
+class RetrievalService:
+    async def retrieve(
+        self,
+        query: str,
+        document_id: UUID,
+        top_k: int = 5,
+    ) -> list[RetrievedChunk]:
+        ...
+```
+
+Algorithm:
+1. Embed query using `text-embedding-3-small` (same model as indexing — must match)
+2. pgvector query:
+   ```sql
+   SELECT c.id, c.text, c.page_number, c.chunk_index,
+          1 - (e.embedding <=> $query_vec) AS similarity
+   FROM embeddings e
+   JOIN chunks c ON c.id = e.chunk_id
+   WHERE c.document_id = $document_id
+   ORDER BY e.embedding <=> $query_vec
+   LIMIT $top_k;
+   ```
+3. Filter results with `similarity < 0.3` (low relevance threshold — discard noise)
+4. Return `RetrievedChunk(chunk_id, text, page_number, similarity)`
+
+`RetrievedChunk` is a Pydantic model — no raw dicts.
+
+**Acceptance Criteria**
+- [ ] Returns top-5 chunks ordered by descending similarity
+- [ ] Chunks with similarity < 0.3 are excluded
+- [ ] Results are scoped to the specified `document_id` only
+- [ ] Unit test: mock embedding + mock DB, assert ordering and filtering
+- [ ] Latency < 200ms for 10k embeddings (pgvector HNSW)
+
+**Dependencies**
+REGVIA-007
+
+---
+
+### REGVIA-010 · POST /api/v1/chat — Q&A with citations
+
+**Problem Statement**
+Users need to ask questions about their document and receive grounded answers with source citations.
+
+**User Story**
+As a user, I want to ask a question about my compliance document and get an accurate answer that cites specific pages, so I can verify the information myself.
+
+**Description**
+Implement the chat endpoint. It retrieves relevant chunks, constructs a grounded prompt, generates a response via OpenAI, and returns the answer with citations. Supports streaming (SSE) as a bonus.
+
+**Technical Details**
+
+Request:
+```json
+{
+  "document_id": "uuid",
+  "session_id": "uuid | null",
+  "question": "What are the data retention requirements?"
+}
+```
+
+Response (non-streaming):
+```json
+{
+  "data": {
+    "session_id": "uuid",
+    "message_id": "uuid",
+    "answer": "According to Section 4.2, data must be retained for...",
+    "citations": [
+      {
+        "chunk_id": "uuid",
+        "page_number": 7,
+        "excerpt": "...data shall be retained for a minimum period of 5 years..."
+      }
+    ],
+    "found_in_document": true
+  },
+  "error": null
+}
+```
+
+Prompt design (system prompt, non-negotiable):
+```
+You are a compliance assistant. Answer the user's question using ONLY the
+context provided below. If the answer is not present in the context, respond
+with exactly: "I could not find this information in the document."
+Do not infer, extrapolate, or use outside knowledge.
+For each claim you make, indicate the source chunk ID in square brackets, e.g. [chunk:uuid].
+
+Context:
+{retrieved_chunks_with_ids}
+```
+
+Citation extraction:
+- Parse `[chunk:uuid]` markers from LLM output
+- Map back to `{chunk_id, page_number, excerpt}` from retrieved chunks
+- Strip markers from the final answer shown to users
+
+`found_in_document`:
+- `false` if answer equals the "not found" sentinel string
+- `true` otherwise
+
+LangSmith tracing:
+- Wrap entire chain in `@traceable` decorator
+- Tag with `document_id`, `session_id`, `question`
+
+**Acceptance Criteria**
+- [ ] Returns grounded answer with ≥ 1 citation when relevant chunk exists
+- [ ] Returns `found_in_document: false` and the sentinel message when no chunk is relevant
+- [ ] LangSmith trace visible for each call with correct tags
+- [ ] Answer never contains `[chunk:uuid]` markers in the user-visible text
+- [ ] Creates `chat_sessions` and `messages` rows
+- [ ] Unit test: mock retrieval + mock OpenAI, assert citation extraction logic
+
+**Dependencies**
+REGVIA-009
+
+---
+
+### REGVIA-011 · Streaming chat via SSE
+
+**Problem Statement**
+LLM responses take 3–10 seconds. Non-streaming creates a dead UI; streaming makes the product feel alive.
+
+**User Story**
+As a user, I want to see the answer appearing word-by-word so the interface feels responsive.
+
+**Description**
+Add a streaming variant of the chat endpoint using Server-Sent Events. The frontend renders tokens incrementally.
+
+**Technical Details**
+
+Endpoint: `POST /api/v1/chat/stream`
+- Returns `Content-Type: text/event-stream`
+- Event types:
+  - `event: token\ndata: {"token": "..."}\n\n` — each streamed token
+  - `event: citations\ndata: {"citations": [...]}\n\n` — sent after stream ends
+  - `event: done\ndata: {}\n\n` — signals completion
+  - `event: error\ndata: {"message": "...", "code": "..."}\n\n` — on error
+
+Implementation:
+- Use `openai.AsyncOpenAI` with `stream=True`
+- Collect full response in background to extract citations, then emit `citations` event
+- FastAPI `StreamingResponse` with generator
+
+Frontend:
+- Use native `EventSource` API or `fetch` with `ReadableStream`
+- Append tokens to message bubble as they arrive
+- Render citations panel after `citations` event
+
+**Acceptance Criteria**
+- [ ] First token appears within 1s of request
+- [ ] Citations are emitted after stream completes
+- [ ] Client-side: tokens render incrementally without re-renders of entire message list
+- [ ] `error` event sent (not HTTP error) if LLM call fails mid-stream
+- [ ] Graceful degradation: if `EventSource` not supported, falls back to non-streaming endpoint
+
+**Dependencies**
+REGVIA-010
+
+---
+
+## E5 — Compliance Summary
+
+---
+
+### REGVIA-012 · POST /api/v1/documents/{id}/summary — generate compliance summary
+
+**Problem Statement**
+Users need a structured compliance overview of their document without having to ask individual questions.
+
+**User Story**
+As a compliance analyst, I want the system to automatically extract obligations, risks, gaps, and recommendations from my document so I can review compliance posture at a glance.
+
+**Description**
+Implement the summary generation endpoint. It retrieves all chunks (or a scored sample for large documents), runs a structured extraction prompt, and returns a typed summary.
+
+**Technical Details**
+
+Response schema (Pydantic + JSON):
+```json
+{
+  "data": {
+    "document_id": "uuid",
+    "obligations": [
+      {"text": "...", "page_number": 3, "chunk_id": "uuid"}
+    ],
+    "risks": [
+      {"text": "...", "severity": "high|medium|low", "page_number": 5, "chunk_id": "uuid"}
+    ],
+    "gaps": [
+      {"text": "...", "page_number": null, "chunk_id": null}
+    ],
+    "recommendations": [
+      {"text": "...", "priority": "high|medium|low"}
+    ],
+    "generated_at": "ISO8601"
+  },
+  "error": null
+}
+```
+
+Prompt strategy:
+- For documents ≤ 30 chunks: pass all chunks in a single prompt
+- For documents > 30 chunks: use map-reduce — summarize per-chunk, then synthesize
+- Use OpenAI function calling / structured output to enforce schema (no free-text parsing)
+- Model: `gpt-4o-mini` for cost efficiency; `gpt-4o` configurable via env var
+
+LangSmith:
+- Trace tagged with `document_id`, `strategy` (direct|map-reduce), `chunk_count`
+
+Caching:
+- Store result in a `summaries` table (add migration) keyed by `document_id`
+- Return cached result if exists; bust cache if document is re-processed
+
+**Acceptance Criteria**
+- [ ] Returns structured JSON matching schema exactly (enforced by Pydantic)
+- [ ] `obligations`, `risks`, `gaps`, `recommendations` are all non-empty arrays for a real compliance PDF
+- [ ] LangSmith trace shows map-reduce strategy for docs > 30 chunks
+- [ ] Second call returns cached result without calling OpenAI
+- [ ] Unit test: mock OpenAI structured output, assert schema validation
+
+**Dependencies**
+REGVIA-007
+
+---
+
+## E6 — Streaming & Background Jobs
+
+> REGVIA-011 covers streaming. This epic covers job infrastructure if needed for scale.
+
+---
+
+### REGVIA-013 · Background task queue (Celery + Redis) — optional scale path
+
+**Problem Statement**
+FastAPI `BackgroundTasks` is in-process and dies if the server restarts mid-processing. For reliability, processing must survive restarts.
+
+**User Story**
+As an operator, I need document processing to be durable so a server restart doesn't leave documents permanently stuck in `processing`.
+
+**Description**
+Replace `BackgroundTasks` with Celery workers backed by Redis. This is the production path; local dev can still use `BackgroundTasks` via feature flag.
+
+**Technical Details**
+- Celery with Redis broker
+- Task: `process_document(document_id: str)` — idempotent (checks current status before running)
+- Worker runs as separate Docker service
+- Dead letter queue: failed tasks after 3 retries move to `failed` queue, document status set to `failed`
+- Flower (Celery monitoring) at `/flower` in dev
+
+Feature flag: `USE_CELERY=true/false` env var — when false, uses FastAPI BackgroundTasks
+
+**Acceptance Criteria**
+- [ ] Server restart during processing: task resumes on worker restart
+- [ ] Failed task (e.g. OpenAI error): retried 3x, then document status = `failed`
+- [ ] `USE_CELERY=false` path works identically for local dev
+- [ ] Flower dashboard shows task state
+
+**Dependencies**
+REGVIA-007
+
+---
+
+## E7 — Observability & Logging
+
+---
+
+### REGVIA-014 · Structured logging with Loguru + OpenTelemetry
+
+**Problem Statement**
+Unstructured print statements make debugging in production impossible. Every request and AI call must be traceable.
+
+**User Story**
+As an operator, I need structured logs and distributed traces so I can diagnose issues without SSH-ing into servers.
+
+**Description**
+Configure Loguru for structured JSON logging and OpenTelemetry for distributed tracing across all backend services.
+
+**Technical Details**
+- Loguru: output format `{"timestamp": ..., "level": ..., "message": ..., "extra": {...}}`
+- Every log entry includes: `request_id` (injected by middleware), `document_id` (when applicable)
+- Request middleware: generate UUID `request_id`, inject into log context
+- OpenTelemetry: instrument FastAPI + SQLAlchemy + httpx (OpenAI client)
+- Export: OTLP to local Jaeger in dev, AWS X-Ray in prod
+- Log levels: `DEBUG` in dev, `INFO` in prod (env-controlled)
+
+**Acceptance Criteria**
+- [ ] Every HTTP request produces a structured log line with `request_id`, `method`, `path`, `status_code`, `duration_ms`
+- [ ] Every OpenAI call produces a log line with `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`
+- [ ] Jaeger UI shows complete trace for a chat request spanning FastAPI → pgvector → OpenAI
+- [ ] No `print()` statements in the codebase
+
+**Dependencies**
+REGVIA-003
+
+---
+
+### REGVIA-015 · LangSmith integration for LLM observability
+
+**Problem Statement**
+We need to evaluate and debug LLM calls in production. LangSmith provides the trace visibility and eval framework needed.
+
+**User Story**
+As an AI engineer, I need every LLM call traced in LangSmith so I can evaluate answer quality, catch regressions, and debug hallucinations.
+
+**Description**
+Integrate LangSmith tracing for all LLM calls in the RAG pipeline and summary generation. Implement a basic eval dataset.
+
+**Technical Details**
+- Set `LANGCHAIN_TRACING_V2=true`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT=regvia-copilot`
+- All LLM chains wrapped with `@traceable` or run through LangChain LCEL (auto-traced)
+- Trace metadata: `document_id`, `session_id`, `chunk_count`, `strategy`
+- Eval dataset: 5 question-answer pairs from a sample compliance PDF stored in LangSmith
+- Run evals on CI: `langsmith evaluate` compares against golden answers using LLM-as-judge
+- LangSmith dataset name: `regvia-rag-evals`
+
+**Acceptance Criteria**
+- [ ] LangSmith project `regvia-copilot` shows traces for every `/api/v1/chat` call
+- [ ] Trace includes retrieved chunks, prompt, and completion
+- [ ] Eval run passes ≥ 80% on golden dataset
+- [ ] `LANGCHAIN_TRACING_V2=false` disables tracing without breaking functionality
+
+**Dependencies**
+REGVIA-010, REGVIA-012
+
+---
+
+## E8 — Frontend Foundation
+
+---
+
+### REGVIA-016 · Frontend project scaffold — Atomic Design structure
+
+**Problem Statement**
+Without an enforced structure, React projects sprawl into unmaintainable component soup.
+
+**User Story**
+As a frontend engineer, I need the project scaffolded with Atomic Design and all libraries installed so I can build features without setup friction.
+
+**Description**
+Create the `frontend/` project with all required dependencies and the full Atomic Design directory structure.
+
+**Technical Details**
+
+Directory structure:
+```
+src/
+  components/
+    atoms/          # Button, Input, Badge, Spinner, Label, Icon
+    molecules/      # FormField, FileDropzone, StatusBadge, CitationCard
+    organisms/      # UploadPanel, ChatBox, SummaryPanel, MessageList
+    templates/      # AppLayout, TwoColumnLayout
+    pages/          # UploadPage, ChatPage (thin — composition only)
+  features/
+    document/       # useDocumentUpload, useDocumentStatus hooks
+    chat/           # useChatSession, useSendMessage hooks
+    summary/        # useSummary hook
+  shared/
+    hooks/          # useSSE, useDebounce
+    utils/          # formatDate, truncateText
+    types/          # Document, Message, Citation, Summary (Zod schemas + inferred TS types)
+    api/            # axios instance, API functions
+  store/            # Zustand stores (UI state only)
+  router/           # React Router routes
+```
+
+Libraries:
+- React 18 + TypeScript 5
+- Tailwind CSS 3 + shadcn/ui
+- TanStack Query v5 (server state)
+- Zustand v4 (UI state)
+- React Hook Form v7 + Zod v3
+- React Router v6
+- Axios (API client)
+- `EventSource` polyfill for SSE
+
+State rules (enforced in code review):
+- TanStack Query: all server data (documents, messages, summaries)
+- Zustand: sidebar open/close, active tab, upload modal visibility
+- No `useState` for server data
+
+**Acceptance Criteria**
+- [ ] All directories exist with index barrel exports
+- [ ] `pnpm dev` starts without errors
+- [ ] shadcn/ui `Button` component renders in a smoke test
+- [ ] TanStack Query DevTools visible in dev mode
+- [ ] Zustand store accessible and typed
+
+**Dependencies**
+REGVIA-002
+
+---
+
+### REGVIA-017 · API client layer + Zod schemas
+
+**Problem Statement**
+Without typed API contracts on the frontend, backend changes cause silent runtime failures.
+
+**User Story**
+As a frontend engineer, I need a typed API client where every response is validated against a Zod schema so I catch contract violations immediately.
+
+**Description**
+Implement the axios-based API client with Zod schema validation on every response. Define schemas mirroring all backend Pydantic models.
+
+**Technical Details**
+
+Schemas (`src/shared/types/`):
+
+```typescript
+const DocumentSchema = z.object({
+  document_id: z.string().uuid(),
+  filename: z.string(),
+  status: z.enum(['pending', 'processing', 'ready', 'failed']),
+  chunk_count: z.number().optional(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+})
+
+const CitationSchema = z.object({
+  chunk_id: z.string().uuid(),
+  page_number: z.number(),
+  excerpt: z.string(),
+})
+
+const MessageSchema = z.object({
+  session_id: z.string().uuid(),
+  message_id: z.string().uuid(),
+  answer: z.string(),
+  citations: z.array(CitationSchema),
+  found_in_document: z.boolean(),
+})
+
+const ApiResponseSchema = <T extends z.ZodTypeAny>(data: T) =>
+  z.object({ data: data, error: z.union([z.null(), z.object({ message: z.string(), code: z.string() })]) })
+```
+
+API functions:
+```typescript
+export const uploadDocument = (file: File): Promise<Document>
+export const getDocumentStatus = (id: string): Promise<Document>
+export const sendMessage = (req: ChatRequest): Promise<Message>
+export const getSummary = (documentId: string): Promise<Summary>
+```
+
+- All functions parse response through Zod; throw `ApiValidationError` on mismatch
+- Axios interceptor: if `response.data.error !== null`, throw `ApiError` with `message` and `code`
+- Base URL from `VITE_API_BASE_URL` env var
+
+**Acceptance Criteria**
+- [ ] TypeScript infers correct return types from Zod schemas (no `any`)
+- [ ] Passing a malformed API response to a schema throws at runtime
+- [ ] All API functions are unit-tested with MSW mocks
+- [ ] `ApiError` is caught by TanStack Query and surfaces in `error` state
+
+**Dependencies**
+REGVIA-016
+
+---
+
+## E9 — Document Feature (Upload UI)
+
+---
+
+### REGVIA-018 · Upload page — drag-and-drop PDF upload with status polling
+
+**Problem Statement**
+Users need a clear, guided path to upload a PDF and know when it's ready to use.
+
+**User Story**
+As a user, I want to drag-and-drop my PDF and see a progress indicator while it's being processed, so I know when I can start asking questions.
+
+**Description**
+Build the Upload page using Atomic Design components. The page handles file selection, upload, and polls for processing status.
+
+**Technical Details**
+
+Component hierarchy:
+```
+UploadPage (pages/)
+  └── AppLayout (templates/)
+       └── UploadPanel (organisms/)
+            ├── FileDropzone (molecules/)  ← drag-drop + file input atom
+            ├── UploadProgress (molecules/) ← progress bar atom + status text
+            └── ProcessingStatus (molecules/) ← status badge + description
+```
+
+Behaviour:
+1. User drags PDF onto `FileDropzone` or clicks to browse
+2. RHF + Zod validate: type = PDF, size ≤ 50MB
+3. On submit: call `uploadDocument()` → receive `document_id`
+4. Navigate to `/chat/:document_id` — polling begins in `useDocumentStatus`
+5. TanStack Query polls `GET /documents/:id` every 2s while `status !== 'ready' | 'failed'`
+6. On `ready`: enable chat + summary tabs
+7. On `failed`: show error state with retry button
+
+State:
+- Zustand: `uploadModalOpen` (if modal variant is chosen)
+- TanStack Query: `useDocumentStatus(documentId)` with `refetchInterval`
+
+Atoms used: `Button`, `Input`, `Spinner`, `Badge`
+Molecules used: `FileDropzone`, `StatusBadge`
+No business logic in atoms or molecules.
+
+**Acceptance Criteria**
+- [ ] Drag-drop works in Chrome, Firefox, Safari
+- [ ] File > 50MB shows inline validation error without attempting upload
+- [ ] Non-PDF file shows "Only PDF files are supported" error
+- [ ] Processing spinner visible while `status === 'processing'`
+- [ ] Auto-navigates to chat when `status === 'ready'`
+- [ ] Failed state shows actionable error message + retry
+
+**Dependencies**
+REGVIA-017, REGVIA-008
+
+---
+
+## E10 — Chat Feature (Q&A UI)
+
+---
+
+### REGVIA-019 · Chat interface with citation rendering
+
+**Problem Statement**
+The core product value is conversational Q&A over a document. The UI must feel fast, show citations clearly, and handle the "not found" case without confusion.
+
+**User Story**
+As a user, I want to type a question, see the answer stream in, and then see which pages the answer came from, so I can trust and verify the response.
+
+**Description**
+Build the chat interface with streaming support and citation display.
+
+**Technical Details**
+
+Component hierarchy:
+```
+ChatPage (pages/)
+  └── TwoColumnLayout (templates/)
+       ├── [left] MessageList (organisms/)
+       │         └── MessageBubble (molecules/) × N
+       │              ├── [text] answer text (atom: Text)
+       │              └── [citations] CitationCard (molecules/) × N
+       └── [right] ChatInputBar (organisms/)
+                  ├── Input (atom)
+                  └── Button (atom) — Send
+```
+
+Streaming behaviour:
+1. User submits question
+2. Open SSE connection to `/api/v1/chat/stream`
+3. Append streaming tokens to a "pending" message bubble
+4. On `citations` event: render `CitationCard` components below answer
+5. On `done`: mark message complete, enable input
+6. On `error`: show error state in message bubble, re-enable input
+
+Non-streaming fallback: if SSE not available, use `sendMessage()` and render full answer at once.
+
+CitationCard shows:
+- Page number
+- Excerpt (first 120 chars, truncated with "…")
+- Click → scrolls to/highlights chunk (stretch goal)
+
+"Not found" state:
+- `found_in_document: false` → render message with distinct styling (grey, italic)
+- Text: "I could not find this information in the document."
+- No citation cards rendered
+
+Zustand state:
+- `activeSessionId: string | null`
+- `streamingMessageId: string | null`
+
+TanStack Query:
+- `useQuery` for message history (on session load)
+- `useMutation` for sending messages (non-streaming)
+
+**Acceptance Criteria**
+- [ ] Streaming tokens appear incrementally (< 100ms between visible token groups)
+- [ ] Citations rendered after stream completes
+- [ ] "Not found" case has distinct visual treatment
+- [ ] Input disabled while streaming, re-enabled on completion
+- [ ] Message history persists across page refresh (loaded from backend)
+- [ ] RTL tests: message renders, citation card renders, "not found" renders
+
+**Dependencies**
+REGVIA-011, REGVIA-017
+
+---
+
+## E11 — Summary Feature (Summary UI)
+
+---
+
+### REGVIA-020 · Compliance summary view
+
+**Problem Statement**
+Users need a high-level view of obligations, risks, gaps, and recommendations without asking individual questions.
+
+**User Story**
+As a compliance analyst, I want to see a structured summary panel so I can quickly assess the compliance posture of my document.
+
+**Description**
+Build the summary tab/panel that triggers summary generation and renders the structured result.
+
+**Technical Details**
+
+Component hierarchy:
+```
+SummaryPanel (organisms/)
+  ├── SummarySection (molecules/) × 4
+  │    ├── SectionHeader (atom: heading + icon)
+  │    └── SummaryItem (molecules/) × N
+  │         ├── ItemText (atom)
+  │         ├── SeverityBadge (atom) — for risks/recommendations
+  │         └── PageRef (atom) — "p.7" chip linking to citation
+  └── GenerateSummaryButton (molecule) — visible if no summary cached
+```
+
+Behaviour:
+1. On entering summary tab: check if summary exists via `useQuery`
+2. If no summary: show "Generate Summary" button
+3. Button click: `useMutation` → `POST /documents/:id/summary`
+4. Loading state: skeleton placeholders for each section
+5. Render 4 sections: Obligations, Risks, Gaps, Recommendations
+6. Risk/recommendation items show severity badge (`high` = red, `medium` = amber, `low` = green)
+
+**Acceptance Criteria**
+- [ ] Summary loads from cache on second visit (no extra API call)
+- [ ] All 4 sections rendered with correct data
+- [ ] Severity badges use correct colors
+- [ ] Skeleton loaders shown during generation
+- [ ] RTL test: renders all sections, severity badge colors, loading state
+
+**Dependencies**
+REGVIA-012, REGVIA-017
+
+---
+
+## E12 — Testing
+
+---
+
+### REGVIA-021 · Backend unit + integration tests
+
+**Problem Statement**
+Untested code in a RAG pipeline leads to silent regressions — bad answers, broken citations, stuck processing.
+
+**User Story**
+As an engineer, I need a test suite that catches regressions in the RAG pipeline and API contracts so I can refactor with confidence.
+
+**Description**
+Implement pytest test suite with coverage gates.
+
+**Technical Details**
+- Framework: pytest + pytest-asyncio + httpx (async TestClient)
+- Mocking: `unittest.mock` + `pytest-mock`; never mock the database (use real PostgreSQL in Docker)
+- Coverage target: lines ≥ 80%, functions ≥ 80%, branches ≥ 70%
+- `pytest-cov` with `--cov-fail-under=80`
+
+Test categories:
+1. **Unit tests** (`tests/unit/`)
+   - `test_chunking.py`: test chunk size, overlap, min-size filter
+   - `test_citation_extraction.py`: parse `[chunk:uuid]` markers correctly
+   - `test_retrieval_filter.py`: similarity threshold filtering
+   - `test_schemas.py`: Pydantic validation edge cases
+
+2. **Integration tests** (`tests/integration/`)
+   - `test_upload_endpoint.py`: upload → DB row created → S3 object exists
+   - `test_chat_endpoint.py`: full RAG call with mocked OpenAI, real DB
+   - `test_summary_endpoint.py`: map-reduce path triggered correctly
+
+**Acceptance Criteria**
+- [ ] `pytest --cov` reports ≥ 80% line coverage
+- [ ] All unit tests run without network calls (fully mocked)
+- [ ] Integration tests run against real PostgreSQL (Docker)
+- [ ] CI fails if coverage drops below threshold
+
+**Dependencies**
+REGVIA-010, REGVIA-012
+
+---
+
+### REGVIA-022 · Frontend unit tests (Jest + RTL)
+
+**Problem Statement**
+Frontend components without tests break silently after refactors.
+
+**User Story**
+As an engineer, I need RTL tests for all non-trivial components so UI regressions are caught in CI.
+
+**Description**
+Implement Jest + React Testing Library tests for all organisms and feature hooks.
+
+**Technical Details**
+- Jest + RTL + MSW for API mocking
+- Coverage: lines ≥ 80%, functions ≥ 80%, branches ≥ 70%
+- Test files colocated: `Component.test.tsx` next to `Component.tsx`
+
+Required tests:
+- `UploadPanel.test.tsx`: file validation, upload success/error states
+- `ChatBox.test.tsx`: message rendering, streaming simulation, citation display
+- `SummaryPanel.test.tsx`: section rendering, loading state, severity badges
+- `useDocumentStatus.test.ts`: polling interval, stops on ready/failed
+- `useSendMessage.test.ts`: mutation states, error handling
+
+**Acceptance Criteria**
+- [ ] `pnpm test --coverage` reports ≥ 80% line coverage
+- [ ] MSW intercepts all API calls (no real network in tests)
+- [ ] All component tests render without console errors
+
+**Dependencies**
+REGVIA-018, REGVIA-019, REGVIA-020
+
+---
+
+### REGVIA-023 · E2E tests (Playwright)
+
+**Problem Statement**
+Unit tests cannot catch integration failures across the full user journey.
+
+**User Story**
+As a QA engineer, I need E2E tests covering the three critical flows so deployment regressions are caught before users see them.
+
+**Description**
+Implement Playwright E2E tests for the three primary user journeys.
+
+**Technical Details**
+- Playwright with TypeScript
+- Tests run against local Docker stack (`docker compose up`)
+- Test fixture: pre-seeded test document in DB + S3
+
+Test suites:
+1. **Upload flow** (`upload.spec.ts`)
+   - Navigate to upload page
+   - Drop a sample PDF
+   - Assert status transitions: pending → processing → ready
+   - Assert redirect to chat page
+
+2. **Chat flow** (`chat.spec.ts`)
+   - Ask a question with a known answer in the test PDF
+   - Assert answer appears (streaming)
+   - Assert ≥ 1 citation rendered
+   - Ask a question with no answer → assert "not found" message
+
+3. **Summary flow** (`summary.spec.ts`)
+   - Click "Generate Summary"
+   - Assert all 4 sections appear with content
+   - Reload page → assert summary loads from cache (no loading state)
+
+**Acceptance Criteria**
+- [ ] All 3 suites pass against local Docker stack
+- [ ] Playwright HTML report generated on CI
+- [ ] Tests are deterministic (no flakiness from timing)
+
+**Dependencies**
+REGVIA-018, REGVIA-019, REGVIA-020
+
+---
+
+## E13 — Deployment & CI/CD
+
+---
+
+### REGVIA-024 · Dockerize all services
+
+**Problem Statement**
+Without containerization, "it works on my machine" is the only guarantee.
+
+**User Story**
+As an operator, I need all services to run identically in dev and production via Docker so deployments are reproducible.
+
+**Description**
+Create production-grade Dockerfiles for frontend and backend. Update docker-compose for local dev.
+
+**Technical Details**
+
+`backend/Dockerfile`:
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN pip install uv && uv sync --frozen --no-dev
+COPY . .
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+`frontend/Dockerfile` (multi-stage):
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+```
+
+`docker-compose.yml` services: `postgres` (pgvector image), `redis`, `backend`, `worker` (Celery), `frontend`, `minio`, `jaeger`
+
+Secrets: all via environment variables, never baked into images.
+
+**Acceptance Criteria**
+- [ ] `docker compose up --build` starts entire stack from scratch
+- [ ] Frontend production build served correctly via nginx
+- [ ] No secrets in Dockerfile or docker-compose (only references to env vars)
+- [ ] Images are < 500MB
+
+**Dependencies**
+REGVIA-013, REGVIA-016
+
+---
+
+### REGVIA-025 · GitHub Actions CI pipeline
+
+**Problem Statement**
+Without CI, broken code reaches main and blocks the team.
+
+**User Story**
+As an engineer, I need CI to run lint, type-check, tests, and build on every pull request so main stays green.
+
+**Description**
+Implement GitHub Actions workflows for both frontend and backend.
+
+**Technical Details**
+
+`.github/workflows/ci.yml`:
+
+Jobs (run in parallel):
+1. `backend-ci`:
+   - Python 3.12
+   - `uv sync`
+   - `ruff check .`
+   - `mypy .`
+   - `pytest --cov --cov-fail-under=80`
+   - Services: `postgres:16-pgvector`, `redis`
+
+2. `frontend-ci`:
+   - Node 20
+   - `pnpm install --frozen-lockfile`
+   - `pnpm lint`
+   - `pnpm type-check`
+   - `pnpm test --coverage`
+   - `pnpm build`
+
+3. `e2e` (runs after both pass):
+   - `docker compose up -d`
+   - `pnpm playwright test`
+   - Upload Playwright HTML report as artifact
+
+Secrets stored in GitHub repository secrets, never in workflow files.
+
+**Acceptance Criteria**
+- [ ] CI runs on every PR to `main`
+- [ ] All 3 jobs must pass before merge is allowed (branch protection)
+- [ ] CI time < 10 minutes end-to-end
+- [ ] Coverage reports uploaded as artifacts
+
+**Dependencies**
+REGVIA-021, REGVIA-022, REGVIA-023, REGVIA-024
+
+---
+
+### REGVIA-026 · AWS deployment (ECS Fargate + RDS + ElastiCache)
+
+**Problem Statement**
+The application needs to run on a publicly accessible URL with production-grade reliability.
+
+**User Story**
+As a user and evaluator, I need the application running at a public URL so I can access it without local setup.
+
+**Description**
+Deploy all services to AWS using Terraform. Target: ECS Fargate for containers, RDS PostgreSQL + pgvector for database, ElastiCache Redis for task queue, S3 for PDFs, CloudFront for frontend.
+
+**Technical Details**
+
+Terraform resources (`infra/`):
+- `aws_ecs_cluster` + `aws_ecs_task_definition` for backend + worker
+- `aws_rds_instance` (PostgreSQL 16 with pgvector extension)
+- `aws_elasticache_cluster` (Redis)
+- `aws_s3_bucket` for PDFs + CloudFront distribution for frontend
+- `aws_secretsmanager_secret` for all secrets (OpenAI key, DB password, etc.)
+- `aws_alb` (Application Load Balancer) in front of ECS
+- VPC with public/private subnets; ECS tasks in private subnet
+
+Environment-specific configs via Terraform workspaces or `.tfvars` files.
+
+Secrets flow: AWS Secrets Manager → ECS task `secrets` config → env vars in container (never in task definition JSON).
+
+**Acceptance Criteria**
+- [ ] `terraform apply` provisions all resources from scratch
+- [ ] Public URL returns the frontend
+- [ ] `POST /api/v1/documents` works end-to-end in production
+- [ ] RDS has automated backups enabled
+- [ ] All secrets in Secrets Manager, not in code or Terraform state
+
+**Dependencies**
+REGVIA-024, REGVIA-025
+
+---
+
+## Dependency Graph (Sequential Build Order)
+
+```
+REGVIA-001 (monorepo)
+  ├── REGVIA-002 (fe toolchain) → REGVIA-016 (fe scaffold) → REGVIA-017 (api client)
+  │                                                              ├── REGVIA-018 (upload UI)
+  │                                                              ├── REGVIA-019 (chat UI)
+  │                                                              └── REGVIA-020 (summary UI)
+  ├── REGVIA-003 (be toolchain) → REGVIA-014 (observability)
+  ├── REGVIA-004 (postgres schema)
+  │     └── REGVIA-006 (upload endpoint)
+  │           └── REGVIA-007 (processing pipeline)
+  │                 ├── REGVIA-008 (status endpoint)
+  │                 ├── REGVIA-009 (retrieval service)
+  │                 │     └── REGVIA-010 (chat endpoint)
+  │                 │           ├── REGVIA-011 (streaming)
+  │                 │           └── REGVIA-015 (langsmith)
+  │                 └── REGVIA-012 (summary endpoint)
+  │                       └── REGVIA-015 (langsmith)
+  └── REGVIA-005 (S3) → (feeds into REGVIA-006)
+
+Testing:
+  REGVIA-021 (be tests) ← REGVIA-010, REGVIA-012
+  REGVIA-022 (fe tests) ← REGVIA-018, REGVIA-019, REGVIA-020
+  REGVIA-023 (e2e)      ← REGVIA-018, REGVIA-019, REGVIA-020
+
+Deployment:
+  REGVIA-024 (docker)  ← REGVIA-013
+  REGVIA-025 (CI/CD)   ← REGVIA-021, REGVIA-022, REGVIA-023, REGVIA-024
+  REGVIA-026 (AWS)     ← REGVIA-024, REGVIA-025
+```
+
+---
+
+## Non-Negotiable Constraints
+
+| # | Constraint |
+|---|-----------|
+| 1 | LLM must NEVER answer outside of retrieved document context |
+| 2 | Every answer must include citations (chunk_id + page_number) |
+| 3 | `found_in_document: false` must be returned — never a hallucinated answer |
+| 4 | TanStack Query owns all server state — no useState for server data |
+| 5 | Zustand owns UI state only — no server data in Zustand |
+| 6 | All API responses validated with Zod on frontend / Pydantic on backend |
+| 7 | Coverage thresholds enforced in CI — PRs cannot merge below 80% |
+| 8 | No secrets in code, Dockerfiles, or Terraform state |
+| 9 | LangSmith tracing enabled for all LLM calls |
+| 10 | Atoms have zero business logic |
