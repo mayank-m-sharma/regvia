@@ -8,6 +8,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.main import app
+from tests.factories import (
+    ChatSessionFactory,
+    ChunkFactory,
+    DocumentFactory,
+    EmbeddingFactory,
+)
 
 # ---------------------------------------------------------------------------
 # Database fixtures
@@ -66,3 +72,28 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
         base_url="http://test",
     ) as client:
         yield client
+
+
+# ---------------------------------------------------------------------------
+# Factory fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def document_factory() -> type[DocumentFactory]:
+    return DocumentFactory
+
+
+@pytest.fixture()
+def chunk_factory() -> type[ChunkFactory]:
+    return ChunkFactory
+
+
+@pytest.fixture()
+def embedding_factory() -> type[EmbeddingFactory]:
+    return EmbeddingFactory
+
+
+@pytest.fixture()
+def chat_session_factory() -> type[ChatSessionFactory]:
+    return ChatSessionFactory
