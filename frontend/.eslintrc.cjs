@@ -10,8 +10,10 @@ module.exports = {
   ],
   ignorePatterns: [
     'dist',
+    'coverage',
     '.eslintrc.cjs',
     'vite.config.ts',
+    'vitest.config.ts',
     'postcss.config.js',
     'tailwind.config.js',
   ],
@@ -26,4 +28,16 @@ module.exports = {
     'react/react-in-jsx-scope': 'off',
     'import/extensions': 'off',
   },
+  overrides: [
+    {
+      // Test files: relax rules that don't apply in a test context
+      files: ['src/test/**/*.{ts,tsx}', 'src/**/*.test.{ts,tsx}'],
+      rules: {
+        'import/no-extraneous-dependencies': ['error', { devDependencies: true }],
+        'import/prefer-default-export': 'off',
+        'react/require-default-props': 'off',
+        'no-console': 'off',
+      },
+    },
+  ],
 };
