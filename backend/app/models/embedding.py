@@ -5,6 +5,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.settings import settings
 from app.models.base import Base, UUIDMixin
 
 if TYPE_CHECKING:
@@ -17,6 +18,8 @@ class Embedding(UUIDMixin, Base):
     chunk_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("chunks.id", ondelete="CASCADE"), nullable=False, unique=True
     )
-    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(settings.EMBEDDING_DIMENSIONS), nullable=False
+    )
 
     chunk: Mapped["Chunk"] = relationship("Chunk", back_populates="embedding")

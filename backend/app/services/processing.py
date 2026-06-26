@@ -3,7 +3,7 @@
 Steps:
 1. Extract text from PDF (pdfplumber)
 2. Chunk text (512 tokens, 50 token overlap, min 100 tokens)
-3. Generate embeddings (text-embedding-3-small via OpenAI)
+3. Generate embeddings via configured provider (OpenAI or Ollama)
 4. Update document status to ready
 """
 
@@ -15,13 +15,13 @@ from uuid import UUID
 
 import pdfplumber
 import tiktoken
-from openai import AsyncOpenAI
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.models.chunk import Chunk
 from app.models.document import Document, DocumentStatus
 from app.models.embedding import Embedding
+from app.services.embedding import get_embedding_provider
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,6 @@ CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
 MIN_CHUNK_SIZE = 100
 EMBEDDING_BATCH_SIZE = 100
-EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 class ChunkData(TypedDict):
@@ -60,11 +59,6 @@ def _chunk_text(
             )
         start += CHUNK_SIZE - CHUNK_OVERLAP
     return chunks
-
-
-async def _embed_batch(client: AsyncOpenAI, texts: list[str]) -> list[list[float]]:
-    response = await client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
-    return [item.embedding for item in response.data]
 
 
 async def process_document(document_id: str) -> None:
@@ -102,11 +96,11 @@ async def process_document(document_id: str) -> None:
             for page_num, text in pages:
                 all_chunks.extend(_chunk_text(text, page_num, enc))
 
-            openai_client = AsyncOpenAI()
+            provider = get_embedding_provider()
             all_embeddings: list[list[float]] = []
             for i in range(0, len(all_chunks), EMBEDDING_BATCH_SIZE):
                 batch = [c["text"] for c in all_chunks[i : i + EMBEDDING_BATCH_SIZE]]
-                vecs = await _embed_batch(openai_client, batch)
+                vecs = await provider.embed(batch)
                 all_embeddings.extend(vecs)
 
             for idx, (chunk_data, vector) in enumerate(
