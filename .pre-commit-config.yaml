@@ -23,6 +23,13 @@ repos:
         files: ^backend/.*\.py$
         pass_filenames: false
 
+      - id: pytest
+        name: pytest (unit)
+        entry: bash -c 'cd backend && ~/.local/bin/uv run pytest tests/unit/ -q'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
       # ── Frontend (TypeScript) ─────────────────────────────────────────────
       - id: eslint
         name: eslint
@@ -34,6 +41,13 @@ repos:
       - id: tsc
         name: tsc
         entry: bash -c 'cd frontend && pnpm type-check'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: vitest
+        name: vitest (unit)
+        entry: bash -c 'cd frontend && pnpm vitest run'
         language: system
         files: ^frontend/.*\.(ts|tsx)$
         pass_filenames: false
