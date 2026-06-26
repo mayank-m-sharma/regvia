@@ -37,7 +37,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "ANN"]
-ignore = ["ANN101", "ANN102"]
+ignore = []
 
 [tool.mypy]
 python_version = "3.12"
@@ -51,6 +51,10 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["app"]
 omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
