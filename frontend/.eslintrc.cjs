@@ -8,7 +8,13 @@ module.exports = {
     'plugin:@typescript-eslint/recommended-type-checked',
     'plugin:jsx-a11y/recommended',
   ],
-  ignorePatterns: ['dist', '.eslintrc.cjs', 'vite.config.ts', 'postcss.config.js', 'tailwind.config.js'],
+  ignorePatterns: [
+    'dist',
+    '.eslintrc.cjs',
+    'vite.config.ts',
+    'postcss.config.js',
+    'tailwind.config.js',
+  ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 'latest',
@@ -20,4 +26,4 @@ module.exports = {
     'react/react-in-jsx-scope': 'off',
     'import/extensions': 'off',
   },
-}
+};
