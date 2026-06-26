@@ -7,29 +7,34 @@
 
 ## Epic Map
 
-| ID | Epic | Area |
-|----|------|------|
-| E1 | Repo & Tooling Bootstrap | Infra |
-| E2 | Database & Storage Layer | Backend |
-| E3 | Document Upload & Processing | Backend |
-| E4 | RAG Pipeline | Backend/AI |
-| E5 | Compliance Summary | Backend/AI |
-| E6 | Streaming & Background Jobs | Backend |
-| E7 | Observability & Logging | Backend/AI |
-| E8 | Frontend Foundation | Frontend |
-| E9 | Document Feature (Upload UI) | Frontend |
-| E10 | Chat Feature (Q&A UI) | Frontend |
-| E11 | Summary Feature (Summary UI) | Frontend |
-| E12 | Testing | Full-Stack |
-| E13 | Deployment & CI/CD | Infra |
+| ID | Epic | Area | Status |
+|----|------|------|--------|
+| E1 | Repo & Tooling Bootstrap | Infra | ✅ Done |
+| E1.5 | Test Infrastructure | Full-Stack | 🔄 In Progress |
+| E2 | Database & Storage Layer | Backend | |
+| E3 | Document Upload & Processing | Backend | |
+| E4 | RAG Pipeline | Backend/AI | |
+| E5 | Compliance Summary | Backend/AI | |
+| E6 | Streaming & Background Jobs | Backend | |
+| E7 | Observability & Logging | Backend/AI | |
+| E8 | Frontend Foundation | Frontend | |
+| E9 | Document Feature (Upload UI) | Frontend | |
+| E10 | Chat Feature (Q&A UI) | Frontend | |
+| E11 | Summary Feature (Summary UI) | Frontend | |
+| E12 | Testing (Feature Tests) | Full-Stack | |
+| E13 | Deployment & CI/CD | Infra | |
+
+> **Test-First Policy:** E1.5 sets up the test infrastructure before any feature work begins.
+> Every feature ticket in E2–E11 is expected to ship with its own tests written alongside it.
+> E12 covers integration tests and coverage gates — not first-time test setup.
 
 ---
 
-## E1 — Repo & Tooling Bootstrap
+## E1 — Repo & Tooling Bootstrap ✅
 
 ---
 
-### REGVIA-001 · Initialize monorepo structure
+### ✅ REGVIA-001 · Initialize monorepo structure
 
 **Problem Statement**
 No project exists yet. We need a clean, reproducible workspace before any code is written.
@@ -60,7 +65,7 @@ None
 
 ---
 
-### REGVIA-002 · Configure frontend toolchain
+### ✅ REGVIA-002 · Configure frontend toolchain
 
 **Problem Statement**
 Frontend needs enforced code quality gates before any feature work begins.
@@ -88,7 +93,7 @@ REGVIA-001
 
 ---
 
-### REGVIA-003 · Configure backend toolchain + root pre-commit hooks
+### ✅ REGVIA-003 · Configure backend toolchain + root pre-commit hooks
 
 **Problem Statement**
 Python projects without enforced formatting and type checking accumulate inconsistencies fast. In a monorepo, git hooks must live at the root — not inside a sub-directory — because there is only one `.git/`.
@@ -122,6 +127,136 @@ Configure `ruff` (lint + format) and `mypy` (strict) in `backend/`. Place a sing
 
 **Dependencies**
 REGVIA-001
+
+---
+
+## E1.5 — Test Infrastructure
+
+> Set up before any feature work. Every engineer writing a feature ticket in E2–E11
+> should be able to drop a test file alongside their code without any scaffolding friction.
+
+---
+
+### REGVIA-003A · Backend test infrastructure
+
+**Problem Statement**
+Without a test scaffold in place, tests get skipped during feature development and are bolted on at the end — the exact anti-pattern we're trying to avoid.
+
+**User Story**
+As a backend engineer, I need a ready-to-use pytest scaffold with async DB fixtures and a test client so I can write tests alongside every feature ticket without setup overhead.
+
+**Description**
+Create the full backend test scaffold: directory structure, `conftest.py` with reusable async fixtures, an async HTTP test client, and test utilities. No feature tests yet — just the infrastructure.
+
+**Technical Details**
+
+Directory structure:
+```
+backend/tests/
+  conftest.py          # shared fixtures
+  unit/
+    __init__.py
+  integration/
+    __init__.py
+```
+
+`conftest.py` fixtures:
+- `async_client` — `httpx.AsyncClient` wrapping the FastAPI app (function-scoped)
+- `test_db` — async SQLAlchemy session pointed at a test database (function-scoped, rolls back after each test)
+- `test_db_url` — reads `TEST_DATABASE_URL` env var, falls back to `DATABASE_URL` with `_test` suffix
+
+`pyproject.toml` additions:
+```toml
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.report]
+fail_under = 80
+```
+
+`.env.example` addition:
+```
+TEST_DATABASE_URL=postgresql+asyncpg://regvia:regvia@localhost:5432/regvia_test
+```
+
+**Acceptance Criteria**
+- [ ] `uv run pytest` discovers `tests/unit/` and `tests/integration/` and exits 0 (no tests yet = pass)
+- [ ] `async_client` fixture returns a working `AsyncClient` against the FastAPI app
+- [ ] `test_db` fixture rolls back after each test (verified by checking no data persists between tests)
+- [ ] A smoke test `test_health.py` passes: `GET /health` returns 200
+
+**Dependencies**
+REGVIA-003
+
+---
+
+### REGVIA-003B · Frontend test infrastructure
+
+**Problem Statement**
+Same problem as 003A — without a working test setup from the start, component tests never get written during feature development.
+
+**User Story**
+As a frontend engineer, I need Vitest + RTL + MSW configured with a custom render helper so I can write component tests alongside every feature ticket.
+
+**Description**
+Configure Vitest (replaces Jest — native Vite integration, faster), React Testing Library, and MSW for API mocking. Provide a custom `render` helper that wraps all providers (QueryClient, Router, etc.).
+
+**Technical Details**
+
+Packages to add to `frontend/`:
+```
+vitest, @vitest/coverage-v8, jsdom,
+@testing-library/react, @testing-library/user-event, @testing-library/jest-dom,
+msw
+```
+
+Files to create:
+```
+frontend/
+  vitest.config.ts         # extends vite.config, sets jsdom environment
+  src/
+    test/
+      setup.ts             # @testing-library/jest-dom matchers, MSW server lifecycle
+      render.tsx           # custom render: wraps QueryClientProvider + MemoryRouter
+      server.ts            # MSW server instance (used in setup.ts)
+      handlers/
+        index.ts           # barrel export for all MSW handlers
+```
+
+`vitest.config.ts`:
+```typescript
+import { defineConfig, mergeConfig } from 'vitest/config'
+import viteConfig from './vite.config'
+
+export default mergeConfig(viteConfig, defineConfig({
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      thresholds: { lines: 80, functions: 80, branches: 70 },
+    },
+  },
+}))
+```
+
+`package.json` script additions:
+```json
+"test": "vitest",
+"test:coverage": "vitest run --coverage"
+```
+
+**Acceptance Criteria**
+- [ ] `pnpm test` discovers test files and exits 0 (no tests yet = pass)
+- [ ] `pnpm test:coverage` runs without error and reports coverage
+- [ ] A smoke test `src/test/smoke.test.tsx` passes: renders a `<div>hello</div>` via custom render
+- [ ] MSW server starts/stops cleanly in beforeAll/afterAll without console errors
+
+**Dependencies**
+REGVIA-002
 
 ---
 
@@ -1051,67 +1186,71 @@ REGVIA-012, REGVIA-017
 
 ---
 
-## E12 — Testing
+## E12 — Testing (Feature Tests)
+
+> Test infrastructure is set up in E1.5 (REGVIA-003A/B). By the time these tickets are reached,
+> each feature ticket in E2–E11 should already have unit tests written alongside it.
+> E12 focuses on integration tests, coverage audits, and filling any gaps.
 
 ---
 
-### REGVIA-021 · Backend unit + integration tests
+### REGVIA-021 · Backend integration tests + coverage gate
 
 **Problem Statement**
-Untested code in a RAG pipeline leads to silent regressions — bad answers, broken citations, stuck processing.
+Unit tests written per-feature need integration-level validation across the full pipeline. Coverage must be audited and enforced before CI is wired.
 
 **User Story**
-As an engineer, I need a test suite that catches regressions in the RAG pipeline and API contracts so I can refactor with confidence.
+As an engineer, I need integration tests covering the full upload → process → query pipeline so cross-component regressions are caught before deployment.
 
 **Description**
-Implement pytest test suite with coverage gates.
+Write integration tests that exercise the full request path against a real database. Audit coverage and fill any gaps to meet the 80% threshold. Test infrastructure (conftest, fixtures, async client) is already in place from REGVIA-003A.
 
 **Technical Details**
-- Framework: pytest + pytest-asyncio + httpx (async TestClient)
-- Mocking: `unittest.mock` + `pytest-mock`; never mock the database (use real PostgreSQL in Docker)
+- All tests use fixtures from `conftest.py` (REGVIA-003A) — no new framework setup
+- Mocking: `pytest-mock` for OpenAI/S3 only; never mock the database
 - Coverage target: lines ≥ 80%, functions ≥ 80%, branches ≥ 70%
-- `pytest-cov` with `--cov-fail-under=80`
 
-Test categories:
-1. **Unit tests** (`tests/unit/`)
-   - `test_chunking.py`: test chunk size, overlap, min-size filter
-   - `test_citation_extraction.py`: parse `[chunk:uuid]` markers correctly
-   - `test_retrieval_filter.py`: similarity threshold filtering
-   - `test_schemas.py`: Pydantic validation edge cases
+Integration tests (`tests/integration/`):
+- `test_upload_endpoint.py`: upload → DB row created → S3 object exists
+- `test_processing_pipeline.py`: full pipeline run with mocked OpenAI embeddings, real DB chunks/embeddings
+- `test_chat_endpoint.py`: full RAG call with mocked OpenAI chat, real DB retrieval
+- `test_summary_endpoint.py`: map-reduce path triggered for docs > 30 chunks
 
-2. **Integration tests** (`tests/integration/`)
-   - `test_upload_endpoint.py`: upload → DB row created → S3 object exists
-   - `test_chat_endpoint.py`: full RAG call with mocked OpenAI, real DB
-   - `test_summary_endpoint.py`: map-reduce path triggered correctly
+Unit test audit (`tests/unit/`) — fill gaps if not written during feature tickets:
+- `test_chunking.py`: chunk size, overlap, min-size filter
+- `test_citation_extraction.py`: `[chunk:uuid]` marker parsing
+- `test_retrieval_filter.py`: similarity threshold filtering
+- `test_schemas.py`: Pydantic validation edge cases
 
 **Acceptance Criteria**
-- [ ] `pytest --cov` reports ≥ 80% line coverage
-- [ ] All unit tests run without network calls (fully mocked)
+- [ ] `uv run pytest --cov` reports ≥ 80% line coverage
+- [ ] All unit tests run without any network calls (fully mocked)
 - [ ] Integration tests run against real PostgreSQL (Docker)
 - [ ] CI fails if coverage drops below threshold
 
 **Dependencies**
-REGVIA-010, REGVIA-012
+REGVIA-003A, REGVIA-010, REGVIA-012
 
 ---
 
-### REGVIA-022 · Frontend unit tests (Jest + RTL)
+### REGVIA-022 · Frontend integration tests + coverage gate
 
 **Problem Statement**
-Frontend components without tests break silently after refactors.
+Component tests written per-feature need a coverage audit and integration-level tests for cross-component flows before CI is wired.
 
 **User Story**
-As an engineer, I need RTL tests for all non-trivial components so UI regressions are caught in CI.
+As an engineer, I need end-to-end component integration tests and a coverage gate so UI regressions are caught in CI.
 
 **Description**
-Implement Jest + React Testing Library tests for all organisms and feature hooks.
+Write integration-level component tests that exercise full user flows (upload → poll → chat). Audit coverage and fill any gaps. Test infrastructure (Vitest, RTL, MSW, custom render) is already in place from REGVIA-003B.
 
 **Technical Details**
-- Jest + RTL + MSW for API mocking
+- All tests use the custom `render` helper from REGVIA-003B — no new framework setup
+- MSW handlers cover all API endpoints
 - Coverage: lines ≥ 80%, functions ≥ 80%, branches ≥ 70%
 - Test files colocated: `Component.test.tsx` next to `Component.tsx`
 
-Required tests:
+Required tests (fill gaps if not written during feature tickets):
 - `UploadPanel.test.tsx`: file validation, upload success/error states
 - `ChatBox.test.tsx`: message rendering, streaming simulation, citation display
 - `SummaryPanel.test.tsx`: section rendering, loading state, severity badges
@@ -1119,12 +1258,13 @@ Required tests:
 - `useSendMessage.test.ts`: mutation states, error handling
 
 **Acceptance Criteria**
-- [ ] `pnpm test --coverage` reports ≥ 80% line coverage
+- [ ] `pnpm test:coverage` reports ≥ 80% line coverage
 - [ ] MSW intercepts all API calls (no real network in tests)
 - [ ] All component tests render without console errors
+- [ ] CI fails if coverage drops below threshold
 
 **Dependencies**
-REGVIA-018, REGVIA-019, REGVIA-020
+REGVIA-003B, REGVIA-018, REGVIA-019, REGVIA-020
 
 ---
 
@@ -1319,28 +1459,32 @@ REGVIA-024, REGVIA-025
 ## Dependency Graph (Sequential Build Order)
 
 ```
-REGVIA-001 (monorepo)
-  ├── REGVIA-002 (fe toolchain) → REGVIA-016 (fe scaffold) → REGVIA-017 (api client)
-  │                                                              ├── REGVIA-018 (upload UI)
-  │                                                              ├── REGVIA-019 (chat UI)
-  │                                                              └── REGVIA-020 (summary UI)
-  ├── REGVIA-003 (be toolchain) → REGVIA-014 (observability)
-  ├── REGVIA-004 (postgres schema)
-  │     └── REGVIA-006 (upload endpoint)
-  │           └── REGVIA-007 (processing pipeline)
-  │                 ├── REGVIA-008 (status endpoint)
-  │                 ├── REGVIA-009 (retrieval service)
-  │                 │     └── REGVIA-010 (chat endpoint)
-  │                 │           ├── REGVIA-011 (streaming)
-  │                 │           └── REGVIA-015 (langsmith)
-  │                 └── REGVIA-012 (summary endpoint)
-  │                       └── REGVIA-015 (langsmith)
-  └── REGVIA-005 (S3) → (feeds into REGVIA-006)
+✅ REGVIA-001 (monorepo)
+  ├── ✅ REGVIA-002 (fe toolchain)
+  │     └── REGVIA-003B (fe test infra)  ← must exist before any frontend feature
+  │           └── REGVIA-016 (fe scaffold) → REGVIA-017 (api client)
+  │                                              ├── REGVIA-018 (upload UI)    [+ tests]
+  │                                              ├── REGVIA-019 (chat UI)      [+ tests]
+  │                                              └── REGVIA-020 (summary UI)   [+ tests]
+  ├── ✅ REGVIA-003 (be toolchain)
+  │     └── REGVIA-003A (be test infra)  ← must exist before any backend feature
+  │           ├── REGVIA-014 (observability)
+  │           ├── REGVIA-004 (postgres schema)
+  │           │     └── REGVIA-006 (upload endpoint)    [+ tests]
+  │           │           └── REGVIA-007 (processing)   [+ tests]
+  │           │                 ├── REGVIA-008 (status endpoint)  [+ tests]
+  │           │                 ├── REGVIA-009 (retrieval)        [+ tests]
+  │           │                 │     └── REGVIA-010 (chat)       [+ tests]
+  │           │                 │           ├── REGVIA-011 (streaming)
+  │           │                 │           └── REGVIA-015 (langsmith)
+  │           │                 └── REGVIA-012 (summary)          [+ tests]
+  │           │                       └── REGVIA-015 (langsmith)
+  │           └── REGVIA-005 (S3) → (feeds into REGVIA-006)
 
-Testing:
-  REGVIA-021 (be tests) ← REGVIA-010, REGVIA-012
-  REGVIA-022 (fe tests) ← REGVIA-018, REGVIA-019, REGVIA-020
-  REGVIA-023 (e2e)      ← REGVIA-018, REGVIA-019, REGVIA-020
+E12 — Integration tests + coverage audit (after all features done):
+  REGVIA-021 (be integration tests) ← REGVIA-003A, REGVIA-010, REGVIA-012
+  REGVIA-022 (fe integration tests) ← REGVIA-003B, REGVIA-018, REGVIA-019, REGVIA-020
+  REGVIA-023 (e2e)                  ← REGVIA-018, REGVIA-019, REGVIA-020
 
 Deployment:
   REGVIA-024 (docker)  ← REGVIA-013
