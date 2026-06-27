@@ -1,1 +1,1 @@
-// templates barrel — populated as features are built
+export * from './AppLayout';

@@ -27,6 +27,10 @@ module.exports = {
   rules: {
     'react/react-in-jsx-scope': 'off',
     'import/extensions': 'off',
+    'import/prefer-default-export': 'off',
+    'react/require-default-props': 'off',
+    'react/jsx-no-bind': 'off',
+    'react/jsx-props-no-spreading': 'off',
   },
   overrides: [
     {
