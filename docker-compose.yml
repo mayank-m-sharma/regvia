@@ -11,16 +11,53 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://regvia:regvia@postgres:5432/regvia
+      REDIS_URL: redis://redis:6379/0
     env_file:
       - ./backend/.env
     depends_on:
       - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+
+  celery-worker:
+    build: ./backend
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://regvia:regvia@postgres:5432/regvia
+      REDIS_URL: redis://redis:6379/0
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+
+  flower:
+    build: ./backend
+    command: celery -A app.worker.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
     volumes:
       - ./backend:/app
 
@@ -48,4 +85,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   minio_data:
