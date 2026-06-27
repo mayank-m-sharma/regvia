@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     SUMMARY_DIRECT_CHUNK_LIMIT: int = 30  # docs <= this use direct strategy
 
     LOG_LEVEL: str = "INFO"  # DEBUG for verbose LLM output, INFO for normal
+    # "text" = human-readable (local dev), "json" = structured newline-delimited (prod)
+    LOG_FORMAT: str = "text"
+
+    # OpenTelemetry
+    OTEL_ENABLED: bool = False
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"  # Jaeger gRPC
+
+    # LangSmith
+    LANGCHAIN_TRACING_V2: bool = False
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_PROJECT: str = "regvia-copilot"
 
     # Background task queue
     USE_CELERY: bool = False  # True = Celery+Redis; False = FastAPI BackgroundTasks

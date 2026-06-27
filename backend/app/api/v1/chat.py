@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -176,12 +177,22 @@ async def _call_llm(
 ) -> str:
     """Call the configured LLM and return the raw response text."""
     client, model = _get_llm_client()
+    t0 = time.monotonic()
     response = await client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
+    )
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+    usage = response.usage
+    logger.info(
+        "llm_call | model={} prompt_tokens={} completion_tokens={} latency_ms={}",
+        model,
+        usage.prompt_tokens if usage else None,
+        usage.completion_tokens if usage else None,
+        latency_ms,
     )
     content = response.choices[0].message.content or ""
     return content
