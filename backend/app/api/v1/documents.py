@@ -2,6 +2,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +10,9 @@ from app.db.session import get_db
 from app.models.document import Document, DocumentStatus
 from app.schemas.common import ApiResponse
 from app.schemas.document import DocumentResponse
+from app.schemas.summary import SummaryResponse
 from app.services.processing import process_document
+from app.services.summary import SummaryService, get_document_or_raise_for_summary
 from app.storage.client import storage_client
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -102,3 +105,33 @@ async def get_document(
             detail={"message": "Document not found.", "code": "DOCUMENT_NOT_FOUND"},
         )
     return ApiResponse(data=DocumentResponse.model_validate(doc))
+
+
+@router.post(
+    "/{document_id}/summary",
+    status_code=202,
+    response_model=ApiResponse[SummaryResponse],
+)
+async def get_or_generate_summary(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),  # noqa: B008
+) -> ApiResponse[SummaryResponse]:
+    """Generate (or return cached) compliance summary for a document."""
+    await get_document_or_raise_for_summary(db, document_id)
+
+    try:
+        svc = SummaryService(db)
+        summary = await svc.get_or_generate(document_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "summary_failed | document_id={}",
+            document_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Summary generation failed.", "code": "SUMMARY_FAILED"},
+        ) from exc
+
+    return ApiResponse(data=summary)

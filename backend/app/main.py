@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from app.api.v1.router import router as v1_router
+from app.core.settings import settings
 
 # Remove default loguru handler and configure structured output
 logger.remove()
@@ -15,7 +16,7 @@ logger.add(
         "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level>"
         " | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     ),
-    level="INFO",
+    level=settings.LOG_LEVEL,
     backtrace=True,
     diagnose=True,
 )

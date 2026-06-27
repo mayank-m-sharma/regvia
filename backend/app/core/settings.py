@@ -30,5 +30,11 @@ class Settings(BaseSettings):
 
     OPENAI_CHAT_MODEL: str = "gpt-4o-mini"
 
+    OPENAI_SUMMARY_MODEL: str = "gpt-4o-mini"  # used for summary generation
+    OLLAMA_SUMMARY_MODEL: str = "llama3.2"  # local fallback
+    SUMMARY_DIRECT_CHUNK_LIMIT: int = 30  # docs <= this use direct strategy
+
+    LOG_LEVEL: str = "INFO"  # DEBUG for verbose LLM output, INFO for normal
+
 
 settings = Settings()
