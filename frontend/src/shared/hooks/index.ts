@@ -1,1 +1,1 @@
-// shared hooks — useSSE, useDebounce implemented per feature
+export { useSSE } from './useSSE';

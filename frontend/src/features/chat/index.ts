@@ -1,1 +1,3 @@
-// chat feature — hooks implemented in E10
+export { useChatSession } from './useChatSession';
+export type { ChatMessage } from './useChatSession';
+export { useSendMessage } from './useSendMessage';

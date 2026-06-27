@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { UploadPage } from '@/components/pages/UploadPage';
+import { ChatPage } from '@/components/pages/ChatPage';
 
 const router = createBrowserRouter([
   {
@@ -8,7 +9,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/chat/:documentId',
-    element: <div className="p-8 text-foreground">Chat page — coming in E10.</div>,
+    element: <ChatPage />,
   },
 ]);
 
