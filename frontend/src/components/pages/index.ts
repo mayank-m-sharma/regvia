@@ -1,1 +1,1 @@
-// pages barrel — populated as features are built
+export * from './UploadPage';

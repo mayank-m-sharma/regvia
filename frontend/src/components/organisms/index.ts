@@ -1,1 +1,1 @@
-// organisms barrel — populated as features are built
+export * from './UploadPanel';

@@ -1,10 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom';
+import { UploadPage } from '@/components/pages/UploadPage';
 
-// Placeholder routes — pages are implemented in E9/E10/E11
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <div className="p-8 text-foreground">RegVia — Upload a document to get started.</div>,
+    element: <UploadPage />,
   },
   {
     path: '/chat/:documentId',
