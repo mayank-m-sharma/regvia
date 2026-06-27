@@ -1,0 +1,69 @@
+import { z } from 'zod';
+
+export const DocumentStatusSchema = z.enum(['pending', 'processing', 'ready', 'failed']);
+
+export const DocumentSchema = z.object({
+  document_id: z.string().uuid(),
+  filename: z.string(),
+  status: DocumentStatusSchema,
+  chunk_count: z.number().optional(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
+
+export const CitationSchema = z.object({
+  chunk_id: z.string().uuid(),
+  page_number: z.number(),
+  excerpt: z.string(),
+});
+
+export const MessageSchema = z.object({
+  session_id: z.string().uuid(),
+  message_id: z.string().uuid(),
+  answer: z.string(),
+  citations: z.array(CitationSchema),
+  found_in_document: z.boolean(),
+});
+
+export const ObligationSchema = z.object({
+  text: z.string(),
+  page_number: z.number().nullable(),
+  chunk_id: z.string().uuid().nullable(),
+});
+
+export const RiskSchema = z.object({
+  text: z.string(),
+  severity: z.enum(['high', 'medium', 'low']),
+  page_number: z.number().nullable(),
+  chunk_id: z.string().uuid().nullable(),
+});
+
+export const GapSchema = z.object({
+  text: z.string(),
+  page_number: z.number().nullable(),
+  chunk_id: z.string().uuid().nullable(),
+});
+
+export const RecommendationSchema = z.object({
+  text: z.string(),
+  priority: z.enum(['high', 'medium', 'low']),
+});
+
+export const SummarySchema = z.object({
+  document_id: z.string().uuid(),
+  obligations: z.array(ObligationSchema),
+  risks: z.array(RiskSchema),
+  gaps: z.array(GapSchema),
+  recommendations: z.array(RecommendationSchema),
+  generated_at: z.string().datetime(),
+});
+
+export const ApiErrorSchema = z.object({
+  message: z.string(),
+  code: z.string(),
+});
+
+export const ApiResponseSchema = <T extends z.ZodTypeAny>(dataSchema: T) => z.object({
+  data: dataSchema,
+  error: z.union([z.null(), ApiErrorSchema]),
+});
