@@ -6,6 +6,7 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.settings import settings
 from app.db.session import get_db
 from app.models.document import Document, DocumentStatus
 from app.schemas.common import ApiResponse
@@ -86,7 +87,16 @@ async def upload_document(
     await db.refresh(doc)
 
     # Enqueue background processing
-    background_tasks.add_task(process_document, str(document_id))
+    if settings.USE_CELERY:
+        from app.worker.tasks import (
+            process_document_task,  # local import — avoids startup cost
+        )
+
+        process_document_task.delay(str(document_id))
+        logger.info("document_enqueued_celery | document_id={}", document_id)
+    else:
+        background_tasks.add_task(process_document, str(document_id))
+        logger.info("document_enqueued_background | document_id={}", document_id)
 
     return ApiResponse(data=DocumentResponse.model_validate(doc))
 

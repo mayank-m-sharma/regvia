@@ -36,5 +36,9 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"  # DEBUG for verbose LLM output, INFO for normal
 
+    # Background task queue
+    USE_CELERY: bool = False  # True = Celery+Redis; False = FastAPI BackgroundTasks
+    REDIS_URL: str = "redis://localhost:6379/0"
+
 
 settings = Settings()
