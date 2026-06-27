@@ -3,3 +3,5 @@ export * from './StatusBadge';
 export * from './ProcessingStatus';
 export * from './CitationCard';
 export * from './MessageBubble';
+export * from './SummaryItem';
+export * from './SummarySection';

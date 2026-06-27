@@ -1,1 +1,1 @@
-// summary feature — hooks implemented in E11
+export { useSummary } from './useSummary';
