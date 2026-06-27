@@ -1,3 +1,4 @@
+import os
 import sys
 
 from fastapi import FastAPI, HTTPException, Request
@@ -7,22 +8,63 @@ from loguru import logger
 
 from app.api.v1.router import router as v1_router
 from app.core.settings import settings
+from app.core.telemetry import configure_telemetry
+from app.middleware.logging import RequestLoggingMiddleware
 
-# Remove default loguru handler and configure structured output
+# ---------------------------------------------------------------------------
+# Logging — JSON in production, human-readable in local dev
+# ---------------------------------------------------------------------------
+
 logger.remove()
-logger.add(
-    sys.stdout,
-    format=(
-        "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level>"
-        " | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-    ),
-    level=settings.LOG_LEVEL,
-    backtrace=True,
-    diagnose=True,
-)
+# Ensure request_id is always present so the format string never raises KeyError
+logger.configure(patcher=lambda record: record["extra"].setdefault("request_id", "-"))
+
+if settings.LOG_FORMAT == "json":
+    logger.add(
+        sys.stdout,
+        level=settings.LOG_LEVEL,
+        serialize=True,  # emits newline-delimited JSON
+        backtrace=False,
+        diagnose=False,
+    )
+else:
+    logger.add(
+        sys.stdout,
+        format=(
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level>"
+            " | <cyan>{name}</cyan>:<cyan>{line}</cyan>"
+            " | <dim>rid={extra[request_id]}</dim>"
+            " - <level>{message}</level>"
+        ),
+        level=settings.LOG_LEVEL,
+        backtrace=True,
+        diagnose=True,
+    )
+
+# ---------------------------------------------------------------------------
+# LangSmith — propagate settings into os.environ so the SDK picks them up
+# (LangSmith reads os.environ directly, not our pydantic Settings object)
+# ---------------------------------------------------------------------------
+
+if settings.LANGCHAIN_TRACING_V2 and settings.LANGCHAIN_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+    logger.info("langsmith_enabled | project={}", settings.LANGCHAIN_PROJECT)
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry (no-op when OTEL_ENABLED=false)
+# ---------------------------------------------------------------------------
+
+configure_telemetry()
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
 
 app = FastAPI(title="RegVia API", version="0.1.0")
 
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -215,10 +216,22 @@ async def _call_summary_llm(
 ) -> str:
     """Call the configured summary LLM and return the raw response text."""
     client, model = _get_summary_llm_client()
+    t0 = time.monotonic()
     response = await client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": system_prompt}],
         response_format={"type": "json_object"},
+    )
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+    usage = response.usage
+    logger.info(
+        "llm_call | model={} strategy={} prompt_tokens={}"
+        " completion_tokens={} latency_ms={}",
+        model,
+        strategy,
+        usage.prompt_tokens if usage else None,
+        usage.completion_tokens if usage else None,
+        latency_ms,
     )
     content = response.choices[0].message.content or "{}"
     return content
@@ -234,10 +247,22 @@ async def _call_map_llm(
 ) -> str:
     """Call the LLM for a single map batch and return raw JSON text."""
     client, model = _get_summary_llm_client()
+    t0 = time.monotonic()
     response = await client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": system_prompt}],
         response_format={"type": "json_object"},
+    )
+    latency_ms = round((time.monotonic() - t0) * 1000, 1)
+    usage = response.usage
+    logger.info(
+        "llm_call | model={} strategy=map batch={} prompt_tokens={}"
+        " completion_tokens={} latency_ms={}",
+        model,
+        batch_index,
+        usage.prompt_tokens if usage else None,
+        usage.completion_tokens if usage else None,
+        latency_ms,
     )
     content = response.choices[0].message.content or "{}"
     return content

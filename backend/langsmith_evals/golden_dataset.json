@@ -1,0 +1,27 @@
+[
+  {
+    "question": "What are the main data retention requirements in this document?",
+    "expected_answer": "The document specifies data retention obligations including the minimum retention period for compliance records and the conditions under which data may be deleted.",
+    "notes": "Replace with answer derived from your actual compliance PDF."
+  },
+  {
+    "question": "What penalties apply for non-compliance?",
+    "expected_answer": "Non-compliance may result in financial penalties, regulatory sanctions, or suspension of operating licences as specified in the relevant sections.",
+    "notes": "Replace with answer derived from your actual compliance PDF."
+  },
+  {
+    "question": "Who is responsible for ensuring compliance with the obligations listed?",
+    "expected_answer": "The document assigns compliance responsibility to the designated compliance officer and senior management.",
+    "notes": "Replace with answer derived from your actual compliance PDF."
+  },
+  {
+    "question": "What reporting timelines are mandated by this regulation?",
+    "expected_answer": "The regulation mandates submission of compliance reports within 30 days of the end of each reporting period.",
+    "notes": "Replace with answer derived from your actual compliance PDF."
+  },
+  {
+    "question": "Are there any exemptions to the stated obligations?",
+    "expected_answer": "The document outlines specific exemptions for small entities and transitional provisions for organisations that are newly in scope.",
+    "notes": "Replace with answer derived from your actual compliance PDF."
+  }
+]
