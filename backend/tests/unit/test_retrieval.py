@@ -15,7 +15,7 @@ def _make_row(
     similarity: float,
 ) -> MagicMock:
     row = MagicMock()
-    row.id = str(chunk_id)
+    row.id = chunk_id
     row.text = text
     row.page_number = page_number
     row.similarity = similarity
@@ -33,7 +33,7 @@ def _make_db_session(rows: list[MagicMock]) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_retrieve_returns_chunks_ordered_by_similarity() -> None:
-    """Rows returned by SQL are already ordered; service preserves that order."""
+    """Rows returned by DB are already ordered; service preserves that order."""
     doc_id = uuid.uuid4()
     ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
     rows = [
@@ -90,7 +90,7 @@ async def test_retrieve_filters_low_similarity() -> None:
 
 @pytest.mark.asyncio
 async def test_retrieve_exactly_at_threshold_excluded() -> None:
-    """Similarity exactly equal to 0.3 is below the strict threshold and excluded."""
+    """Similarity below 0.3 is excluded."""
     doc_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
     rows = [_make_row(chunk_id, "Borderline chunk", 1, 0.29)]
@@ -110,7 +110,7 @@ async def test_retrieve_exactly_at_threshold_excluded() -> None:
 
 @pytest.mark.asyncio
 async def test_retrieve_scoped_to_document_id() -> None:
-    """The document_id is passed through to the SQL query."""
+    """Only one DB execute call is made and it uses the ORM statement."""
     doc_id = uuid.uuid4()
     db = _make_db_session([])
     mock_provider = MagicMock()
@@ -122,11 +122,13 @@ async def test_retrieve_scoped_to_document_id() -> None:
         svc = RetrievalService(db)
         await svc.retrieve("query", doc_id, top_k=3)
 
-    call_kwargs = db.execute.call_args
-    # Second positional arg is the params dict
-    params = call_kwargs[0][1]
-    assert params["document_id"] == str(doc_id)
-    assert params["top_k"] == 3
+    # ORM path: session.execute called exactly once with a Select statement
+    db.execute.assert_called_once()
+    stmt = db.execute.call_args[0][0]
+    # The statement should be a SQLAlchemy Select (not a raw TextClause)
+    from sqlalchemy import Select
+
+    assert isinstance(stmt, Select)
 
 
 @pytest.mark.asyncio

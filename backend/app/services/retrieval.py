@@ -4,12 +4,13 @@ import uuid
 
 from loguru import logger
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.chunk import Chunk
+from app.models.embedding import Embedding
 from app.services.embedding import get_embedding_provider
 
-_NOT_FOUND_SENTINEL = "I could not find this information in the document."
 _SIMILARITY_THRESHOLD = 0.3
 
 
@@ -41,26 +42,24 @@ class RetrievalService:
         vectors = await provider.embed([query])
         query_vec: list[float] = vectors[0]
 
-        sql = text(
-            """
-            SELECT c.id, c.text, c.page_number, c.chunk_index,
-                   1 - (e.embedding <=> :query_vec) AS similarity
-            FROM embeddings e
-            JOIN chunks c ON c.id = e.chunk_id
-            WHERE c.document_id = :document_id
-            ORDER BY e.embedding <=> :query_vec
-            LIMIT :top_k
-            """
+        similarity_expr = (1 - Embedding.embedding.cosine_distance(query_vec)).label(
+            "similarity"
         )
 
-        result = await self._session.execute(
-            sql,
-            {
-                "query_vec": str(query_vec),
-                "document_id": str(document_id),
-                "top_k": top_k,
-            },
+        stmt = (
+            select(
+                Chunk.id,
+                Chunk.text,
+                Chunk.page_number,
+                similarity_expr,
+            )
+            .join(Chunk, Chunk.id == Embedding.chunk_id)
+            .where(Chunk.document_id == document_id)
+            .order_by(Embedding.embedding.cosine_distance(query_vec))
+            .limit(top_k)
         )
+
+        result = await self._session.execute(stmt)
         rows = result.fetchall()
 
         chunks: list[RetrievedChunk] = []
@@ -70,11 +69,9 @@ class RetrievalService:
                 continue
             chunks.append(
                 RetrievedChunk(
-                    chunk_id=uuid.UUID(str(row.id)),
-                    text=str(row.text),
-                    page_number=(
-                        int(row.page_number) if row.page_number is not None else None
-                    ),
+                    chunk_id=row.id,
+                    text=row.text,
+                    page_number=row.page_number,
                     similarity=similarity,
                 )
             )
