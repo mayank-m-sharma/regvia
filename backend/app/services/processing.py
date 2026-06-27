@@ -9,12 +9,12 @@ Steps:
 
 import asyncio
 import io
-import logging
 from typing import TypedDict
 from uuid import UUID
 
 import pdfplumber
 import tiktoken
+from loguru import logger
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
@@ -22,8 +22,6 @@ from app.models.chunk import Chunk
 from app.models.document import Document, DocumentStatus
 from app.models.embedding import Embedding
 from app.services.embedding import get_embedding_provider
-
-logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
@@ -124,15 +122,13 @@ async def process_document(document_id: str) -> None:
             await session.commit()
 
             logger.info(
-                "document_processed",
-                extra={"document_id": document_id, "chunk_count": len(all_chunks)},
+                "document_processed | document_id={} chunk_count={}",
+                document_id,
+                len(all_chunks),
             )
 
         except Exception:
-            logger.exception(
-                "document_processing_failed",
-                extra={"document_id": document_id},
-            )
+            logger.exception("document_processing_failed | document_id={}", document_id)
             await session.rollback()
             doc.status = DocumentStatus.failed
             await session.commit()
