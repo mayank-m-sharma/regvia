@@ -6,9 +6,9 @@ export const DocumentSchema = z.object({
   document_id: z.string().uuid(),
   filename: z.string(),
   status: DocumentStatusSchema,
-  chunk_count: z.number().optional(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
+  chunk_count: z.number().nullish(),
+  created_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
 });
 
 export const CitationSchema = z.object({
@@ -55,7 +55,7 @@ export const SummarySchema = z.object({
   risks: z.array(RiskSchema),
   gaps: z.array(GapSchema),
   recommendations: z.array(RecommendationSchema),
-  generated_at: z.string().datetime(),
+  generated_at: z.string().datetime({ offset: true }),
 });
 
 export const ApiErrorSchema = z.object({
