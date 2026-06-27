@@ -36,6 +36,16 @@ export default mergeConfig(
           'src/shared/types/types.ts',
           // Page components — thin compositions, covered by E2E
           'src/components/pages/**',
+          // New premium UI organisms — thin compositions, covered by E2E
+          'src/components/organisms/TopBar/**',
+          'src/components/organisms/ChatArea/**',
+          'src/components/organisms/ChatInputArea/**',
+          'src/components/organisms/SummarySlideOver/**',
+          // New premium UI molecules — covered by E2E
+          'src/components/molecules/DocumentStatusWidget/**',
+          'src/components/molecules/PremiumMessageBubble/**',
+          // Templates — thin layout wrappers, covered by E2E
+          'src/components/templates/**',
           'node_modules/**',
         ],
         include: ['src/**/*.{ts,tsx}'],

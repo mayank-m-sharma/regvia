@@ -1,16 +1,20 @@
 import { createBrowserRouter } from 'react-router-dom';
-import { UploadPage } from '@/components/pages/UploadPage';
-import { ChatPage } from '@/components/pages/ChatPage';
+import { UnifiedChatPage } from '@/components/pages/UnifiedChatPage';
 
-const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <UploadPage />,
-  },
-  {
-    path: '/chat/:documentId',
-    element: <ChatPage />,
-  },
-]);
+interface RouterContext {
+  dark: boolean;
+  setDark: (d: boolean) => void;
+}
 
-export default router;
+export function createRouter(ctx: RouterContext) {
+  return createBrowserRouter([
+    {
+      path: '/',
+      element: <UnifiedChatPage dark={ctx.dark} setDark={ctx.setDark} />,
+    },
+    {
+      path: '/chat/:documentId',
+      element: <UnifiedChatPage dark={ctx.dark} setDark={ctx.setDark} />,
+    },
+  ]);
+}
