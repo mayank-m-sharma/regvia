@@ -1,8 +1,24 @@
+import sys
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from loguru import logger
 
 from app.api.v1.router import router as v1_router
+
+# Remove default loguru handler and configure structured output
+logger.remove()
+logger.add(
+    sys.stdout,
+    format=(
+        "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level>"
+        " | <cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    ),
+    level="INFO",
+    backtrace=True,
+    diagnose=True,
+)
 
 app = FastAPI(title="RegVia API", version="0.1.0")
 

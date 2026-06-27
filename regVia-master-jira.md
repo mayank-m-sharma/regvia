@@ -1622,6 +1622,43 @@ Deployment:
 
 ---
 
+## E14 — Backend Code Quality Audit
+
+---
+
+### REGVIA-027 · Audit backend for implementation shortcuts and enforce ORM/best-practice standards
+
+**Problem Statement**
+During rapid feature development (E2–E4), some shortcuts were taken — raw SQL instead of ORM queries, ad-hoc patterns, and inconsistencies — that need to be identified and corrected before the codebase grows further.
+
+**User Story**
+As an engineer, I need a clean, consistent backend codebase so that future contributors don't inherit confusing patterns and technical debt doesn't compound.
+
+**Description**
+Perform a structured audit of the entire `backend/app/` directory, identify all deviations from established project conventions, fix them, and verify with tests and linters.
+
+**Areas to audit**
+- Raw SQL (`text()`) used instead of SQLAlchemy ORM expressions
+- Any `Any` type annotations without explicit justification (`# noqa: ANN401`)
+- Inconsistent logging (stdlib `logging` vs `loguru`)
+- Business logic leaking into API layer (should live in services)
+- Missing or incomplete error handling paths
+- Hardcoded values that should be settings
+- Any `_private` attribute access on external objects (e.g. `storage_client._client`)
+
+**Acceptance Criteria**
+- [ ] All DB queries use SQLAlchemy ORM — no raw `text()` in application code
+- [ ] All modules use `loguru` — no stdlib `logging`
+- [ ] All hardcoded values are configurable via `settings`
+- [ ] `tech-debts.md` updated or items resolved
+- [ ] All existing tests pass, coverage unchanged or improved
+- [ ] mypy strict and ruff clean
+
+**Dependencies**
+E2, E3, E4
+
+---
+
 ## Non-Negotiable Constraints
 
 | # | Constraint |
