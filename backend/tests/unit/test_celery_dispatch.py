@@ -59,10 +59,10 @@ def test_celery_app_broker_uses_redis_url() -> None:
 
 
 def test_use_celery_default_is_false() -> None:
-    """USE_CELERY defaults to False — BackgroundTasks path is the default."""
+    """USE_CELERY defaults to False when not set in env or env files."""
     from app.core.settings import Settings
 
-    s = Settings()
+    s = Settings.model_construct()
     assert s.USE_CELERY is False
 
 

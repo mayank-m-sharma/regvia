@@ -95,8 +95,11 @@ async def test_upload_valid_pdf_returns_202(
     with (
         patch("app.api.v1.documents.storage_client") as mock_storage,
         patch("app.api.v1.documents.process_document"),
+        patch("app.api.v1.documents.settings") as mock_settings,
     ):
         mock_storage.upload = AsyncMock()
+        mock_settings.USE_CELERY = False
+        mock_settings.MAX_UPLOAD_SIZE_BYTES = 52_428_800
         response = await async_client.post(
             "/api/v1/documents",
             files={"file": ("policy.pdf", io.BytesIO(pdf_content), "application/pdf")},
