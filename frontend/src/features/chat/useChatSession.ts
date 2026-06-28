@@ -24,16 +24,23 @@ export function useChatSession(sessionId: string | null, documentId: string | nu
   const { setStreamingMessageId } = useUIStore();
   const { connect } = useSSE(API_BASE);
 
-  // Load history when sessionId is provided
+  // Load history when sessionId is provided.
+  // Messages are cleared synchronously first so concurrent sendQuestion calls
+  // (e.g. library first-message flow) append into fresh state. The async
+  // getSession response only sets messages when none have been added yet,
+  // avoiding a race where history overwrites an in-progress streaming response.
   useEffect(() => {
     if (!sessionId) {
       setMessages([]);
       setHistoryLoaded(false);
-      return;
+      return () => {};
     }
+    let cancelled = false;
+    setMessages([]);
     setHistoryLoaded(false);
     getSession(sessionId)
       .then((detail) => {
+        if (cancelled) return;
         const loaded: ChatMessage[] = detail.messages.map((m) => ({
           id: m.id,
           role: m.role,
@@ -43,13 +50,16 @@ export function useChatSession(sessionId: string | null, documentId: string | nu
           streaming: false,
           error: false,
         }));
-        setMessages(loaded);
+        // Keep messages if sendQuestion already appended (first library message race).
+        setMessages((prev) => (prev.length > 0 ? prev : loaded));
         setHistoryLoaded(true);
       })
       .catch(() => {
+        if (cancelled) return;
         setMessages([]);
         setHistoryLoaded(true);
       });
+    return () => { cancelled = true; };
   }, [sessionId]);
 
   const appendToken = useCallback((msgId: string, token: string) => {
@@ -79,7 +89,7 @@ export function useChatSession(sessionId: string | null, documentId: string | nu
 
   const sendQuestion = useCallback(
     (question: string) => {
-      if (isStreaming || !documentId) return;
+      if (isStreaming) return;
 
       const userMsgId = crypto.randomUUID();
       const assistantMsgId = crypto.randomUUID();

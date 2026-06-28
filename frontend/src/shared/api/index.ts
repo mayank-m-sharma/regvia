@@ -1,4 +1,6 @@
-export { uploadDocument, getDocumentStatus } from './documents';
+export {
+  uploadDocument, getDocumentStatus, getDocuments, addToLibrary,
+} from './documents';
 export { sendMessage } from './chat';
 export type { ChatRequest } from './chat';
 export { getSummary } from './summary';

@@ -5,11 +5,13 @@ const SESSION_ID = '55555555-5555-5555-5555-555555555555';
 
 describe('sessions API', () => {
   describe('getSessions', () => {
-    it('returns list of sessions', async () => {
+    it('returns list of sessions including library sessions', async () => {
       const sessions = await getSessions();
-      expect(sessions).toHaveLength(1);
+      expect(sessions).toHaveLength(2);
       expect(sessions[0]?.title).toBe('Data Retention Policy');
       expect(sessions[0]?.message_count).toBe(4);
+      // Library session has null document_id
+      expect(sessions[1]?.document_id).toBeNull();
     });
   });
 

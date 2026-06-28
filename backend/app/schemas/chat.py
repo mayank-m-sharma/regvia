@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
-    document_id: uuid.UUID
+    document_id: uuid.UUID | None = None  # None → library mode (search all user docs)
     session_id: uuid.UUID | None = None
     question: str
 
@@ -29,12 +29,12 @@ class ChatResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Session management schemas (REGVIA-029)
+# Session management schemas (REGVIA-029 / REGVIA-030)
 # ---------------------------------------------------------------------------
 
 
 class CreateSessionRequest(BaseModel):
-    document_id: uuid.UUID
+    document_id: uuid.UUID | None = None  # None → library session
 
 
 class ChatHistoryMessage(BaseModel):
@@ -49,7 +49,7 @@ class ChatHistoryMessage(BaseModel):
 
 class ChatSessionResponse(BaseModel):
     id: uuid.UUID
-    document_id: uuid.UUID
+    document_id: uuid.UUID | None  # None for library sessions
     document_filename: str | None  # populated from join
     title: str | None
     created_at: datetime
@@ -61,7 +61,7 @@ class ChatSessionResponse(BaseModel):
 
 class ChatSessionDetailResponse(BaseModel):
     id: uuid.UUID
-    document_id: uuid.UUID
+    document_id: uuid.UUID | None  # None for library sessions
     document_filename: str | None
     title: str | None
     created_at: datetime

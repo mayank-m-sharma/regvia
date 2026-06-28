@@ -31,11 +31,41 @@ export const handlers = [
       document_id: '11111111-1111-1111-1111-111111111111',
       filename: 'test.pdf',
       status: 'pending',
+      chunk_count: null,
+      size_bytes: 2048,
+      in_library: false,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     },
     error: null,
   }, { status: 202 })),
+
+  // List documents (GET /documents)
+  http.get(`${BASE_URL}/documents`, () => HttpResponse.json({
+    data: [
+      {
+        document_id: '11111111-1111-1111-1111-111111111111',
+        filename: 'gdpr-policy.pdf',
+        status: 'ready',
+        chunk_count: 42,
+        size_bytes: 204800,
+        in_library: true,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+      {
+        document_id: '22222222-2222-2222-2222-222222222222',
+        filename: 'iso27001.pdf',
+        status: 'processing',
+        chunk_count: null,
+        size_bytes: 512000,
+        in_library: true,
+        created_at: '2024-01-02T00:00:00Z',
+        updated_at: '2024-01-02T00:00:00Z',
+      },
+    ],
+    error: null,
+  })),
 
   // Get document status
   http.get(`${BASE_URL}/documents/:id`, ({ params }) => HttpResponse.json({
@@ -44,6 +74,23 @@ export const handlers = [
       filename: 'test.pdf',
       status: 'ready',
       chunk_count: 42,
+      size_bytes: 2048,
+      in_library: false,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    },
+    error: null,
+  })),
+
+  // Add to library
+  http.patch(`${BASE_URL}/documents/:id/library`, ({ params }) => HttpResponse.json({
+    data: {
+      document_id: params.id,
+      filename: 'test.pdf',
+      status: 'ready',
+      chunk_count: 42,
+      size_bytes: 2048,
+      in_library: true,
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
     },
@@ -61,6 +108,15 @@ export const handlers = [
         created_at: '2024-01-01T00:00:00Z',
         last_message_at: '2024-01-02T10:00:00Z',
         message_count: 4,
+      },
+      {
+        id: '66666666-6666-6666-6666-666666666666',
+        document_id: null,
+        document_filename: null,
+        title: 'Library: GDPR questions',
+        created_at: '2024-01-03T00:00:00Z',
+        last_message_at: '2024-01-03T11:00:00Z',
+        message_count: 2,
       },
     ],
     error: null,

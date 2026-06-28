@@ -7,7 +7,7 @@ import type { Message } from '@/shared/types/types';
 const MessageResponseSchema = ApiResponseSchema(MessageSchema);
 
 export interface ChatRequest {
-  document_id: string;
+  document_id: string | null; // null → Knowledge Library mode
   session_id: string | null;
   question: string;
 }

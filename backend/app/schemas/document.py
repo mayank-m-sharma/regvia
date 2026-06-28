@@ -11,6 +11,8 @@ class DocumentResponse(BaseModel):
     filename: str
     status: DocumentStatus
     chunk_count: int | None = None
+    size_bytes: int
+    in_library: bool
     created_at: datetime
     updated_at: datetime
 

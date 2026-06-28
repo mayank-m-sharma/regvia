@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { LandingPage } from '@/components/pages/LandingPage';
 import { AuthCallbackPage } from '@/components/pages/AuthCallbackPage';
 import { UnifiedChatPage } from '@/components/pages/UnifiedChatPage';
+import { KnowledgeLibraryPage } from '@/components/pages/KnowledgeLibraryPage';
 import { ProtectedRoute } from '@/components/templates/ProtectedRoute';
 
 interface RouterContext {
@@ -32,6 +33,14 @@ export function createRouter(ctx: RouterContext) {
       element: (
         <ProtectedRoute>
           <UnifiedChatPage dark={ctx.dark} setDark={ctx.setDark} />
+        </ProtectedRoute>
+      ),
+    },
+    {
+      path: '/library',
+      element: (
+        <ProtectedRoute>
+          <KnowledgeLibraryPage dark={ctx.dark} setDark={ctx.setDark} />
         </ProtectedRoute>
       ),
     },

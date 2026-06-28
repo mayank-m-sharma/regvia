@@ -9,6 +9,7 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.chat_session import ChatSession
+    from app.models.document import Document
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -24,6 +25,9 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     chat_sessions: Mapped[list["ChatSession"]] = relationship(
         "ChatSession", back_populates="user"
+    )
+    documents: Mapped[list["Document"]] = relationship(
+        "Document", back_populates="owner"
     )
 
     __table_args__ = (

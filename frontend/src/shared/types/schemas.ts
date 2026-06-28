@@ -7,6 +7,8 @@ export const DocumentSchema = z.object({
   filename: z.string(),
   status: DocumentStatusSchema,
   chunk_count: z.number().nullish(),
+  size_bytes: z.number().int(),
+  in_library: z.boolean(),
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
 });
@@ -60,7 +62,7 @@ export const SummarySchema = z.object({
 
 export const ChatSessionSchema = z.object({
   id: z.string().uuid(),
-  document_id: z.string().uuid(),
+  document_id: z.string().uuid().nullable(), // null for library sessions
   document_filename: z.string().nullable(),
   title: z.string().nullable(),
   created_at: z.string().datetime({ offset: true }),
@@ -78,7 +80,7 @@ export const ChatHistoryMessageSchema = z.object({
 
 export const ChatSessionDetailSchema = z.object({
   id: z.string().uuid(),
-  document_id: z.string().uuid(),
+  document_id: z.string().uuid().nullable(), // null for library sessions
   document_filename: z.string().nullable(),
   title: z.string().nullable(),
   created_at: z.string().datetime({ offset: true }),

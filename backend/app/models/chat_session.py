@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 class ChatSession(UUIDMixin, Base):
     __tablename__ = "chat_sessions"
 
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
@@ -30,7 +30,7 @@ class ChatSession(UUIDMixin, Base):
         DateTime(timezone=True), nullable=True
     )
 
-    document: Mapped["Document"] = relationship(
+    document: Mapped["Document | None"] = relationship(
         "Document", back_populates="chat_sessions"
     )
     user: Mapped["User | None"] = relationship("User", back_populates="chat_sessions")
