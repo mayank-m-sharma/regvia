@@ -39,6 +39,7 @@ def test_all_models_registered_in_base_metadata() -> None:
         "chat_sessions",
         "messages",
         "summaries",
+        "users",
     }
     assert expected == table_names
 

@@ -8,8 +8,23 @@ from app.models.chat_session import ChatSession
 from app.models.chunk import Chunk
 from app.models.document import Document, DocumentStatus
 from app.models.embedding import Embedding
+from app.models.user import User
 
 fake = Faker()
+
+
+class UserFactory:
+    @staticmethod
+    async def create(session: AsyncSession, **kwargs: object) -> User:
+        user = User(
+            google_sub=str(kwargs.get("google_sub", fake.uuid4())),
+            email=str(kwargs.get("email", fake.email())),
+            display_name=str(kwargs.get("display_name", fake.name())),
+            avatar_url=kwargs.get("avatar_url"),
+        )
+        session.add(user)
+        await session.flush()
+        return user
 
 
 class DocumentFactory:
