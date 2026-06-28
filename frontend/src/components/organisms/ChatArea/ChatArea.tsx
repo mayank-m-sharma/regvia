@@ -12,6 +12,8 @@ interface ChatAreaProps {
   onFile: (file: File) => void;
   onFileError: (msg: string) => void;
   onSend: (text: string) => void;
+  mode?: 'document' | 'library';
+  onManageLibrary?: () => void;
 }
 
 const MAX_SIZE = 50 * 1024 * 1024;
@@ -22,15 +24,23 @@ function validate(file: File): string | null {
   return null;
 }
 
-const SUGGESTIONS = [
+const DOC_SUGGESTIONS = [
   'What are the key obligations in this document?',
   'What are the main compliance risks?',
   'Are there any data retention requirements?',
   'Summarise the key deadlines.',
 ];
 
+const LIBRARY_SUGGESTIONS = [
+  'What compliance requirements are common across my documents?',
+  'Are there any conflicting obligations between policies?',
+  'Summarise the key deadlines across all documents.',
+  'What data retention requirements apply?',
+];
+
 export function ChatArea({
   messages, hasDocument, isDocumentReady, onFile, onFileError, onSend,
+  mode = 'document', onManageLibrary,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -94,8 +104,57 @@ export function ChatArea({
       )}
 
       <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        {/* Empty state — no document */}
-        {!hasDocument && messages.length === 0 && (
+        {/* Empty state — library mode */}
+        {mode === 'library' && messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center gap-4 py-16 text-center fade-in">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="1.5">
+                <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+                <path d="M8 7h8M8 11h8M8 15h5" />
+              </svg>
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-semibold text-foreground">Ask your Knowledge Library</h2>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Your question searches across
+                {' '}
+                <strong>all documents</strong>
+                {' '}
+                you have added to your library — not just one.
+              </p>
+            </div>
+            <div className="flex max-w-lg flex-wrap justify-center gap-2">
+              {LIBRARY_SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onSend(s)}
+                  className={cn(
+                    'rounded-xl border border-border/60 bg-card/60 px-3 py-2',
+                    'text-xs text-muted-foreground',
+                    'cursor-pointer transition-colors duration-150',
+                    'hover:border-primary/40 hover:bg-primary/5 hover:text-foreground',
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            {onManageLibrary && (
+              <button
+                type="button"
+                onClick={onManageLibrary}
+                className="text-xs text-primary hover:underline"
+              >
+                Upload &amp; manage your library →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Empty state — document mode, no document uploaded yet */}
+        {mode === 'document' && !hasDocument && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-8 py-16 text-center fade-in">
             <div className="space-y-3">
               <div className="flex justify-center">
@@ -105,9 +164,13 @@ export function ChatArea({
                   </svg>
                 </div>
               </div>
-              <h2 className="text-lg font-semibold text-foreground">RegVia Compliance Copilot</h2>
+              <h2 className="text-lg font-semibold text-foreground">Document Chat</h2>
               <p className="max-w-sm text-sm text-muted-foreground">
-                Upload a compliance document to get started.
+                Upload a single compliance PDF and ask questions about it.
+                Answers include page citations so you can verify every claim.
+              </p>
+              <p className="max-w-sm text-xs text-muted-foreground/60">
+                To search across multiple documents at once, switch to Knowledge Library mode above.
               </p>
             </div>
 
@@ -135,7 +198,7 @@ export function ChatArea({
         )}
 
         {/* Document uploaded, waiting for ready */}
-        {hasDocument && !isDocumentReady && messages.length === 0 && (
+        {mode === 'document' && hasDocument && !isDocumentReady && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-center fade-in">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/30">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2">
@@ -153,7 +216,7 @@ export function ChatArea({
         )}
 
         {/* Document ready, no messages yet */}
-        {hasDocument && isDocumentReady && messages.length === 0 && (
+        {mode === 'document' && hasDocument && isDocumentReady && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-4 py-16 text-center fade-in">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/30">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
@@ -163,7 +226,7 @@ export function ChatArea({
             </div>
             <p className="text-sm font-medium text-foreground">Document ready — ask anything</p>
             <div className="flex max-w-lg flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((s) => (
+              {DOC_SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"

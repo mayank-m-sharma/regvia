@@ -22,7 +22,7 @@ export async function getSessions(): Promise<ChatSession[]> {
   return parsed.data.data;
 }
 
-export async function createSession(documentId: string): Promise<ChatSession> {
+export async function createSession(documentId: string | null): Promise<ChatSession> {
   const response = await apiClient.post<z.infer<typeof SessionCreateSchema>>(
     '/chat/sessions',
     { document_id: documentId },

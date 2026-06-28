@@ -105,7 +105,7 @@ def _extract_citations(
 
 async def _get_or_create_session(
     db: AsyncSession,
-    document_id: uuid.UUID,
+    document_id: uuid.UUID | None,
     session_id: uuid.UUID | None,
     user_id: uuid.UUID,
 ) -> ChatSession:
@@ -236,14 +236,26 @@ async def create_session(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ApiResponse[ChatSessionResponse]:
-    """Create a new empty chat session for a document."""
-    result = await db.execute(select(Document).where(Document.id == body.document_id))
-    doc = result.scalar_one_or_none()
-    if doc is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"message": "Document not found.", "code": "DOCUMENT_NOT_FOUND"},
+    """Create a new empty chat session.
+
+    Pass ``document_id`` for a document-specific session; omit it (or pass
+    ``null``) for a Knowledge Library session.
+    """
+    doc_filename: str | None = None
+    if body.document_id is not None:
+        result = await db.execute(
+            select(Document).where(Document.id == body.document_id)
         )
+        doc = result.scalar_one_or_none()
+        if doc is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "message": "Document not found.",
+                    "code": "DOCUMENT_NOT_FOUND",
+                },
+            )
+        doc_filename = doc.filename
 
     session = ChatSession(document_id=body.document_id, user_id=current_user.id)
     db.add(session)
@@ -254,7 +266,7 @@ async def create_session(
         data=ChatSessionResponse(
             id=session.id,
             document_id=session.document_id,
-            document_filename=doc.filename,
+            document_filename=doc_filename,
             title=session.title,
             created_at=session.created_at,
             last_message_at=session.last_message_at,
@@ -281,7 +293,7 @@ async def list_sessions(
 
     rows = await db.execute(
         select(ChatSession, Document.filename, msg_count_sq.c.message_count)
-        .join(Document, ChatSession.document_id == Document.id)
+        .outerjoin(Document, ChatSession.document_id == Document.id)
         .outerjoin(msg_count_sq, ChatSession.id == msg_count_sq.c.session_id)
         .where(ChatSession.user_id == current_user.id)
         .order_by(
@@ -375,10 +387,19 @@ async def post_chat(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ApiResponse[ChatResponse]:
     """Non-streaming RAG chat endpoint."""
-    doc = await _get_document_or_raise(db, body.document_id)
+    retrieval_svc = RetrievalService(db)
+    if body.document_id is not None:
+        doc = await _get_document_or_raise(db, body.document_id)
+        session_document_id: uuid.UUID | None = doc.id
+        chunks = await retrieval_svc.retrieve(body.question, doc.id, top_k=5)
+    else:
+        session_document_id = None
+        chunks = await retrieval_svc.retrieve_from_library(
+            body.question, current_user.id, top_k=10
+        )
 
     chat_session = await _get_or_create_session(
-        db, doc.id, body.session_id, current_user.id
+        db, session_document_id, body.session_id, current_user.id
     )
     is_first_exchange = chat_session.last_message_at is None
 
@@ -391,15 +412,12 @@ async def post_chat(
     db.add(user_msg)
     await db.flush()
 
-    retrieval_svc = RetrievalService(db)
-    chunks = await retrieval_svc.retrieve(body.question, doc.id, top_k=5)
-
     system_prompt = _build_system_prompt(chunks)
     try:
         raw_answer = await _call_llm(
             system_prompt=system_prompt,
             question=body.question,
-            document_id=str(body.document_id),
+            document_id=str(body.document_id) if body.document_id else "library",
             session_id=str(chat_session.id),
         )
     except Exception as exc:
@@ -471,24 +489,32 @@ async def post_chat_stream(
     """Streaming RAG chat endpoint — Server-Sent Events."""
 
     async def _generate() -> AsyncGenerator[str, None]:
-        try:
-            doc = await _get_document_or_raise(db, body.document_id)
-        except HTTPException as exc:
-            raw = exc.detail
-            detail: dict[str, object] = (
-                raw if isinstance(raw, dict) else {"message": str(raw), "code": "ERROR"}
-            )
-            yield _sse_event(
-                "error",
-                {
-                    "message": detail.get("message", ""),
-                    "code": detail.get("code", "ERROR"),
-                },
-            )
-            return
+        # ── Retrieval: single doc or library ──────────────────────────────
+        retrieval_svc = RetrievalService(db)
+        if body.document_id is not None:
+            try:
+                doc = await _get_document_or_raise(db, body.document_id)
+            except HTTPException as exc:
+                raw = exc.detail
+                detail: dict[str, object] = (
+                    raw
+                    if isinstance(raw, dict)
+                    else {"message": str(raw), "code": "ERROR"}
+                )
+                yield _sse_event(
+                    "error",
+                    {
+                        "message": detail.get("message", ""),
+                        "code": detail.get("code", "ERROR"),
+                    },
+                )
+                return
+            stream_document_id: uuid.UUID | None = doc.id
+        else:
+            stream_document_id = None
 
         chat_session = await _get_or_create_session(
-            db, doc.id, body.session_id, current_user.id
+            db, stream_document_id, body.session_id, current_user.id
         )
         is_first_exchange = chat_session.last_message_at is None
 
@@ -501,9 +527,15 @@ async def post_chat_stream(
         db.add(user_msg)
         await db.flush()
 
-        retrieval_svc = RetrievalService(db)
         try:
-            chunks = await retrieval_svc.retrieve(body.question, doc.id, top_k=5)
+            if stream_document_id is not None:
+                chunks = await retrieval_svc.retrieve(
+                    body.question, stream_document_id, top_k=5
+                )
+            else:
+                chunks = await retrieval_svc.retrieve_from_library(
+                    body.question, current_user.id, top_k=10
+                )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "stream_retrieval_failed | document_id={}", body.document_id
@@ -518,7 +550,7 @@ async def post_chat_stream(
             async for token in _call_llm_stream(
                 system_prompt=system_prompt,
                 question=body.question,
-                document_id=str(body.document_id),
+                document_id=str(body.document_id) if body.document_id else "library",
                 session_id=str(chat_session.id),
             ):
                 full_text += token

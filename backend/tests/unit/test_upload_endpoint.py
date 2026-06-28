@@ -26,10 +26,21 @@ def _make_mock_db() -> MagicMock:
             object.__setattr__(obj, "created_at", datetime.now(UTC))
         if "updated_at" not in obj_dict or obj_dict["updated_at"] is None:
             object.__setattr__(obj, "updated_at", datetime.now(UTC))
+        if not hasattr(obj, "in_library"):
+            object.__setattr__(obj, "in_library", False)
+        if not hasattr(obj, "size_bytes"):
+            object.__setattr__(obj, "size_bytes", 0)
+
+    # execute() returns a result with scalar_one_or_none() → None (no duplicate)
+    async def _execute(stmt: object) -> MagicMock:  # noqa: ANN001
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        return result
 
     mock_session.add = MagicMock()
     mock_session.commit = AsyncMock()
     mock_session.refresh = AsyncMock(side_effect=_refresh)
+    mock_session.execute = AsyncMock(side_effect=_execute)
     return mock_session
 
 
