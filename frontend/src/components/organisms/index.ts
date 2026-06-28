@@ -6,3 +6,4 @@ export * from './TopBar';
 export * from './ChatArea';
 export * from './ChatInputArea';
 export * from './SummarySlideOver';
+export * from './UploadProgressPanel';
