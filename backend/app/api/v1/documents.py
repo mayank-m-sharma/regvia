@@ -6,6 +6,7 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.settings import settings
 from app.db.session import get_db
 from app.models.document import Document, DocumentStatus
@@ -16,7 +17,11 @@ from app.services.processing import process_document
 from app.services.summary import SummaryService, get_document_or_raise_for_summary
 from app.storage.client import storage_client
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/documents",
+    tags=["documents"],
+    dependencies=[Depends(get_current_user)],
+)
 
 MAX_FILE_SIZE = 52_428_800  # 50 MB
 FILENAME_RE = re.compile(r"^[\w\-]+\.pdf$")

@@ -4,6 +4,27 @@ const BASE_URL = 'http://localhost:8000/api/v1';
 
 // eslint-disable-next-line import/prefer-default-export
 export const handlers = [
+  // Auth
+  http.get(`${BASE_URL}/auth/login`, () => HttpResponse.json({
+    data: { url: 'https://accounts.google.com/o/oauth2/auth?client_id=test', state: 'random-state-xyz' },
+    error: null,
+  })),
+
+  http.post(`${BASE_URL}/auth/exchange`, () => HttpResponse.json({
+    data: { token: 'test-jwt-token' },
+    error: null,
+  })),
+
+  http.get(`${BASE_URL}/auth/me`, () => HttpResponse.json({
+    data: {
+      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      email: 'user@example.com',
+      display_name: 'Test User',
+      avatar_url: null,
+    },
+    error: null,
+  })),
+
   // Upload document
   http.post(`${BASE_URL}/documents`, () => HttpResponse.json({
     data: {

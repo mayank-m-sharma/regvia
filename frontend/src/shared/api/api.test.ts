@@ -2,13 +2,36 @@ import { describe, it, expect } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/server';
 import {
-  uploadDocument, getDocumentStatus, sendMessage, getSummary,
+  uploadDocument, getDocumentStatus, sendMessage, getSummary, getLoginUrl, exchangeCode, getMe,
 } from './index';
 import { ApiError, ApiValidationError } from './errors';
 
 const BASE_URL = 'http://localhost:8000/api/v1';
 
 describe('API client', () => {
+  describe('getLoginUrl', () => {
+    it('returns url and state', async () => {
+      const result = await getLoginUrl();
+      expect(result.url).toContain('accounts.google.com');
+      expect(result.state).toBe('random-state-xyz');
+    });
+  });
+
+  describe('exchangeCode', () => {
+    it('returns a JWT token', async () => {
+      const token = await exchangeCode('auth-code-123');
+      expect(token).toBe('test-jwt-token');
+    });
+  });
+
+  describe('getMe', () => {
+    it('returns user info', async () => {
+      const user = await getMe();
+      expect(user.email).toBe('user@example.com');
+      expect(user.display_name).toBe('Test User');
+    });
+  });
+
   describe('uploadDocument', () => {
     it('returns a Document on success', async () => {
       const file = new File(['%PDF-1.4'], 'test.pdf', { type: 'application/pdf' });

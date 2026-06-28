@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.settings import settings
 from app.db.session import get_db
 from app.models.chat_session import ChatSession
@@ -23,7 +24,11 @@ from app.schemas.chat import ChatRequest, ChatResponse, Citation
 from app.schemas.common import ApiResponse
 from app.services.retrieval import RetrievalService, RetrievedChunk
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(
+    prefix="/chat",
+    tags=["chat"],
+    dependencies=[Depends(get_current_user)],
+)
 
 _NOT_FOUND_SENTINEL = "I could not find this information in the document."
 _CHUNK_MARKER_RE = re.compile(r"\[chunk:([0-9a-f\-]{36})\]", re.IGNORECASE)

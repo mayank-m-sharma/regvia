@@ -149,6 +149,7 @@ def _sample_summary() -> SummaryResponse:
 async def test_endpoint_returns_404_for_unknown_document(
     async_client: AsyncClient,
     override_db_not_found: None,
+    override_auth: None,
 ) -> None:
     response = await async_client.post(
         f"/api/v1/documents/{_UNKNOWN_ID}/summary",
@@ -162,6 +163,7 @@ async def test_endpoint_returns_404_for_unknown_document(
 async def test_endpoint_returns_422_for_unready_document(
     async_client: AsyncClient,
     override_db_not_ready: None,
+    override_auth: None,
 ) -> None:
     response = await async_client.post(
         f"/api/v1/documents/{_DOCUMENT_ID}/summary",
@@ -175,6 +177,7 @@ async def test_endpoint_returns_422_for_unready_document(
 async def test_endpoint_returns_202_with_summary(
     async_client: AsyncClient,
     override_db_ready: None,
+    override_auth: None,
 ) -> None:
     sample = _sample_summary()
 

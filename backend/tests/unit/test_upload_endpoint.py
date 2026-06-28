@@ -46,7 +46,10 @@ def override_db() -> Generator[None, None, None]:
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_non_pdf(async_client: AsyncClient) -> None:
+async def test_upload_rejects_non_pdf(
+    async_client: AsyncClient,
+    override_auth: None,
+) -> None:
     response = await async_client.post(
         "/api/v1/documents",
         files={"file": ("test.txt", io.BytesIO(b"hello"), "text/plain")},
@@ -56,7 +59,10 @@ async def test_upload_rejects_non_pdf(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_oversized_file(async_client: AsyncClient) -> None:
+async def test_upload_rejects_oversized_file(
+    async_client: AsyncClient,
+    override_auth: None,
+) -> None:
     big = io.BytesIO(b"x" * (52_428_801))
     with patch("app.api.v1.documents.storage_client") as mock_storage:
         mock_storage.upload = AsyncMock()
@@ -72,6 +78,7 @@ async def test_upload_rejects_oversized_file(async_client: AsyncClient) -> None:
 async def test_upload_valid_pdf_returns_202(
     async_client: AsyncClient,
     override_db: None,
+    override_auth: None,
 ) -> None:
     pdf_content = b"%PDF-1.4 test content"
     with (

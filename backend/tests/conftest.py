@@ -1,18 +1,23 @@
 """Shared pytest fixtures for the RegVia backend test suite."""
 
 import os
-from collections.abc import AsyncGenerator
+import uuid
+from collections.abc import AsyncGenerator, Generator
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.auth import get_current_user
 from app.main import app
+from app.models.user import User
 from tests.factories import (
     ChatSessionFactory,
     ChunkFactory,
     DocumentFactory,
     EmbeddingFactory,
+    UserFactory,
 )
 
 # ---------------------------------------------------------------------------
@@ -97,3 +102,38 @@ def embedding_factory() -> type[EmbeddingFactory]:
 @pytest.fixture()
 def chat_session_factory() -> type[ChatSessionFactory]:
     return ChatSessionFactory
+
+
+@pytest.fixture()
+def user_factory() -> type[UserFactory]:
+    return UserFactory
+
+
+# ---------------------------------------------------------------------------
+# Auth override fixture — injects a stub user so protected routes work in tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def stub_user() -> MagicMock:
+    """Return a MagicMock User for dependency injection — no real DB needed."""
+    user = MagicMock(spec=User)
+    user.id = uuid.uuid4()
+    user.google_sub = "google-sub-test"
+    user.email = "test@example.com"
+    user.display_name = "Test User"
+    user.avatar_url = None
+    user.last_login_at = None
+    return user
+
+
+@pytest.fixture()
+def override_auth(stub_user: MagicMock) -> Generator[MagicMock, None, None]:
+    """Override get_current_user to return a stub user — no JWT required in tests."""
+
+    async def _mock_auth() -> MagicMock:
+        return stub_user
+
+    app.dependency_overrides[get_current_user] = _mock_auth
+    yield stub_user
+    app.dependency_overrides.pop(get_current_user, None)

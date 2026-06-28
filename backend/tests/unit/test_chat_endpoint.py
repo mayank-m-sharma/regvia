@@ -179,6 +179,7 @@ def _sample_chunks() -> list[RetrievedChunk]:
 async def test_chat_returns_202_with_answer_and_citations(
     async_client: AsyncClient,
     override_db_ready: None,
+    override_auth: None,
 ) -> None:
     answer_with_marker = f"All entities must comply. [chunk:{_CHUNK_ID}]"
     with (
@@ -211,6 +212,7 @@ async def test_chat_returns_202_with_answer_and_citations(
 async def test_chat_found_in_document_false_when_sentinel(
     async_client: AsyncClient,
     override_db_ready: None,
+    override_auth: None,
 ) -> None:
     sentinel = "I could not find this information in the document."
     with (
@@ -240,6 +242,7 @@ async def test_chat_found_in_document_false_when_sentinel(
 async def test_chat_citation_markers_stripped_from_answer(
     async_client: AsyncClient,
     override_db_ready: None,
+    override_auth: None,
 ) -> None:
     cid1 = _CHUNK_ID
     cid2 = uuid.uuid4()
@@ -279,6 +282,7 @@ async def test_chat_citation_markers_stripped_from_answer(
 async def test_chat_returns_404_when_document_not_found(
     async_client: AsyncClient,
     override_db_not_found: None,
+    override_auth: None,
 ) -> None:
     response = await async_client.post(
         "/api/v1/chat",
@@ -295,6 +299,7 @@ async def test_chat_returns_404_when_document_not_found(
 async def test_chat_returns_422_when_document_not_ready(
     async_client: AsyncClient,
     override_db_not_ready: None,
+    override_auth: None,
 ) -> None:
     response = await async_client.post(
         "/api/v1/chat",
@@ -311,6 +316,7 @@ async def test_chat_returns_422_when_document_not_ready(
 async def test_chat_creates_new_session_when_session_id_null(
     async_client: AsyncClient,
     override_db_ready: None,
+    override_auth: None,
 ) -> None:
     with (
         patch("app.api.v1.chat.RetrievalService") as mock_svc_cls,
@@ -339,6 +345,7 @@ async def test_chat_creates_new_session_when_session_id_null(
 @pytest.mark.asyncio
 async def test_chat_reuses_existing_session_when_session_id_provided(
     async_client: AsyncClient,
+    override_auth: None,
 ) -> None:
     existing_session_id = uuid.uuid4()
     existing_session = MagicMock()

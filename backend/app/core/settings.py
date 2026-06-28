@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "regvia-copilot"
 
+    # Google OAuth2 + JWT
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    # Must match the redirect URI registered in Google Cloud Console
+    GOOGLE_REDIRECT_URI: str = "http://localhost:5173/auth/callback"
+    JWT_SECRET_KEY: str = "dev-secret-change-in-production-min-32-chars!!"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
     # Background task queue
     USE_CELERY: bool = False  # True = Celery+Redis; False = FastAPI BackgroundTasks
     REDIS_URL: str = "redis://localhost:6379/0"

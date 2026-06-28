@@ -1,5 +1,6 @@
 import axios, { type AxiosError } from 'axios';
 import { ApiError } from './errors';
+import { useAuthStore } from '@/store/authStore';
 
 const apiClient = axios.create({
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -14,7 +15,17 @@ interface ApiEnvelope {
   error: { message: string; code: string } | null;
 }
 
-// Response interceptor: unwrap envelope and throw ApiError on business errors
+// Request interceptor: attach JWT from authStore
+apiClient.interceptors.request.use((config) => {
+  const { token } = useAuthStore.getState();
+  if (token) {
+    // eslint-disable-next-line no-param-reassign
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Response interceptor: unwrap envelope, handle 401, throw ApiError on business errors
 apiClient.interceptors.response.use(
   (response) => {
     const envelope = response.data as ApiEnvelope;
@@ -23,7 +34,13 @@ apiClient.interceptors.response.use(
     }
     return response;
   },
-  (error: AxiosError) => Promise.reject(error),
+  (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      useAuthStore.getState().logout();
+      window.location.href = '/';
+    }
+    return Promise.reject(error);
+  },
 );
 
 export default apiClient;

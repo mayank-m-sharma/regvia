@@ -117,6 +117,7 @@ async def _make_async_gen(*values: str) -> AsyncGenerator[str, None]:
 async def test_stream_returns_event_stream_content_type(
     async_client: AsyncClient,
     override_db_stream: None,
+    override_auth: None,
 ) -> None:
     async def _fake_stream(**kwargs: object) -> AsyncGenerator[str, None]:
         yield "Hello"
@@ -146,6 +147,7 @@ async def test_stream_returns_event_stream_content_type(
 async def test_stream_emits_token_events(
     async_client: AsyncClient,
     override_db_stream: None,
+    override_auth: None,
 ) -> None:
     async def _fake_stream(**kwargs: object) -> AsyncGenerator[str, None]:
         yield "Hello"
@@ -181,6 +183,7 @@ async def test_stream_emits_token_events(
 async def test_stream_emits_citations_event(
     async_client: AsyncClient,
     override_db_stream: None,
+    override_auth: None,
 ) -> None:
     async def _fake_stream(**kwargs: object) -> AsyncGenerator[str, None]:
         yield f"Timely reporting is required. [chunk:{_CHUNK_ID}]"
@@ -217,6 +220,7 @@ async def test_stream_emits_citations_event(
 async def test_stream_emits_done_event_last(
     async_client: AsyncClient,
     override_db_stream: None,
+    override_auth: None,
 ) -> None:
     async def _fake_stream(**kwargs: object) -> AsyncGenerator[str, None]:
         yield "Answer here."
@@ -246,6 +250,7 @@ async def test_stream_emits_done_event_last(
 async def test_stream_emits_error_event_on_llm_failure(
     async_client: AsyncClient,
     override_db_stream: None,
+    override_auth: None,
 ) -> None:
     async def _failing_stream(**kwargs: object) -> AsyncGenerator[str, None]:
         raise RuntimeError("LLM blew up")
@@ -281,6 +286,7 @@ async def test_stream_emits_error_event_on_llm_failure(
 @pytest.mark.asyncio
 async def test_stream_emits_error_event_when_document_not_found(
     async_client: AsyncClient,
+    override_auth: None,
 ) -> None:
     async def _execute(stmt: object, params: object = None) -> MagicMock:  # noqa: ANN001
         result = MagicMock()

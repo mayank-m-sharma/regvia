@@ -5,6 +5,7 @@ from app.models.document import Document, DocumentStatus
 from app.models.embedding import Embedding
 from app.models.message import Message, MessageRole
 from app.models.summary import Summary
+from app.models.user import User
 
 __all__ = [
     "Base",
@@ -16,4 +17,5 @@ __all__ = [
     "Message",
     "MessageRole",
     "Summary",
+    "User",
 ]

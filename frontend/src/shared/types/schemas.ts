@@ -58,6 +58,13 @@ export const SummarySchema = z.object({
   generated_at: z.string().datetime({ offset: true }),
 });
 
+export const UserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  display_name: z.string().nullable(),
+  avatar_url: z.string().nullable(),
+});
+
 export const ApiErrorSchema = z.object({
   message: z.string(),
   code: z.string(),
