@@ -58,6 +58,34 @@ export const SummarySchema = z.object({
   generated_at: z.string().datetime({ offset: true }),
 });
 
+export const ChatSessionSchema = z.object({
+  id: z.string().uuid(),
+  document_id: z.string().uuid(),
+  document_filename: z.string().nullable(),
+  title: z.string().nullable(),
+  created_at: z.string().datetime({ offset: true }),
+  last_message_at: z.string().datetime({ offset: true }).nullable(),
+  message_count: z.number().int(),
+});
+
+export const ChatHistoryMessageSchema = z.object({
+  id: z.string().uuid(),
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+  citations: z.array(CitationSchema),
+  created_at: z.string().datetime({ offset: true }),
+});
+
+export const ChatSessionDetailSchema = z.object({
+  id: z.string().uuid(),
+  document_id: z.string().uuid(),
+  document_filename: z.string().nullable(),
+  title: z.string().nullable(),
+  created_at: z.string().datetime({ offset: true }),
+  last_message_at: z.string().datetime({ offset: true }).nullable(),
+  messages: z.array(ChatHistoryMessageSchema),
+});
+
 export const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),

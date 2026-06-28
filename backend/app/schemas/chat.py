@@ -1,6 +1,7 @@
 """Pydantic schemas for the chat endpoints."""
 
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -25,3 +26,46 @@ class ChatResponse(BaseModel):
     found_in_document: bool
     llm_provider: str  # e.g. "openai/gpt-4o-mini" or "ollama/llama3.2"
     embed_provider: str  # e.g. "openai/text-embedding-3-small" or "ollama/nomic-embed-text"  # noqa: E501
+
+
+# ---------------------------------------------------------------------------
+# Session management schemas (REGVIA-029)
+# ---------------------------------------------------------------------------
+
+
+class CreateSessionRequest(BaseModel):
+    document_id: uuid.UUID
+
+
+class ChatHistoryMessage(BaseModel):
+    id: uuid.UUID
+    role: str  # "user" | "assistant"
+    content: str
+    citations: list[Citation]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatSessionResponse(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_filename: str | None  # populated from join
+    title: str | None
+    created_at: datetime
+    last_message_at: datetime | None
+    message_count: int
+
+    model_config = {"from_attributes": True}
+
+
+class ChatSessionDetailResponse(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_filename: str | None
+    title: str | None
+    created_at: datetime
+    last_message_at: datetime | None
+    messages: list[ChatHistoryMessage]
+
+    model_config = {"from_attributes": True}

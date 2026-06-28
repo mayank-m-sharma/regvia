@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useUIStore } from '@/store';
 import { useSSE } from '@/shared/hooks/useSSE';
-import { sendMessage } from '@/shared/api';
+import { sendMessage, getSession } from '@/shared/api';
 import type { Citation, Message } from '@/shared/types/types';
 
 export interface ChatMessage {
@@ -17,11 +17,40 @@ export interface ChatMessage {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)
   ?? 'http://localhost:8000/api/v1';
 
-export function useChatSession(documentId: string) {
+export function useChatSession(sessionId: string | null, documentId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const { activeSessionId, setActiveSessionId, setStreamingMessageId } = useUIStore();
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const { setStreamingMessageId } = useUIStore();
   const { connect } = useSSE(API_BASE);
+
+  // Load history when sessionId is provided
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      setHistoryLoaded(false);
+      return;
+    }
+    setHistoryLoaded(false);
+    getSession(sessionId)
+      .then((detail) => {
+        const loaded: ChatMessage[] = detail.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          citations: m.citations,
+          foundInDocument: true,
+          streaming: false,
+          error: false,
+        }));
+        setMessages(loaded);
+        setHistoryLoaded(true);
+      })
+      .catch(() => {
+        setMessages([]);
+        setHistoryLoaded(true);
+      });
+  }, [sessionId]);
 
   const appendToken = useCallback((msgId: string, token: string) => {
     setMessages((prev) => prev.map(
@@ -50,7 +79,7 @@ export function useChatSession(documentId: string) {
 
   const sendQuestion = useCallback(
     (question: string) => {
-      if (isStreaming) return;
+      if (isStreaming || !documentId) return;
 
       const userMsgId = crypto.randomUUID();
       const assistantMsgId = crypto.randomUUID();
@@ -85,9 +114,12 @@ export function useChatSession(documentId: string) {
 
       const fallback = () => {
         if (doneReceived) return;
-        sendMessage({ document_id: documentId, session_id: activeSessionId, question })
+        sendMessage({
+          document_id: documentId,
+          session_id: sessionId,
+          question,
+        })
           .then((msg: Message) => {
-            setActiveSessionId(msg.session_id);
             setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? {
               ...m,
               content: msg.answer,
@@ -104,11 +136,12 @@ export function useChatSession(documentId: string) {
       try {
         connect(
           '/chat/stream',
-          { document_id: documentId, session_id: activeSessionId, question },
+          { document_id: documentId, session_id: sessionId, question },
           {
             onToken: (token) => appendToken(assistantMsgId, token),
             onCitations: (raw) => {
-              citationsReceived = raw as Citation[];
+              const payload = raw as unknown as { citations: Citation[] } | Citation[];
+              citationsReceived = Array.isArray(payload) ? payload : payload.citations ?? [];
             },
             onDone: () => {
               doneReceived = true;
@@ -122,10 +155,12 @@ export function useChatSession(documentId: string) {
       }
     },
     [
-      isStreaming, documentId, activeSessionId, connect,
-      appendToken, finalise, markError, setActiveSessionId, setStreamingMessageId,
+      isStreaming, documentId, sessionId, connect,
+      appendToken, finalise, markError, setStreamingMessageId,
     ],
   );
 
-  return { messages, isStreaming, sendQuestion };
+  return {
+    messages, isStreaming, historyLoaded, sendQuestion,
+  };
 }

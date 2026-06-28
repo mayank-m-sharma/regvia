@@ -50,6 +50,63 @@ export const handlers = [
     error: null,
   })),
 
+  // Chat sessions
+  http.get(`${BASE_URL}/chat/sessions`, () => HttpResponse.json({
+    data: [
+      {
+        id: '55555555-5555-5555-5555-555555555555',
+        document_id: '11111111-1111-1111-1111-111111111111',
+        document_filename: 'test.pdf',
+        title: 'Data Retention Policy',
+        created_at: '2024-01-01T00:00:00Z',
+        last_message_at: '2024-01-02T10:00:00Z',
+        message_count: 4,
+      },
+    ],
+    error: null,
+  })),
+
+  http.post(`${BASE_URL}/chat/sessions`, () => HttpResponse.json({
+    data: {
+      id: '55555555-5555-5555-5555-555555555555',
+      document_id: '11111111-1111-1111-1111-111111111111',
+      document_filename: 'test.pdf',
+      title: null,
+      created_at: '2024-01-01T00:00:00Z',
+      last_message_at: null,
+      message_count: 0,
+    },
+    error: null,
+  }, { status: 201 })),
+
+  http.get(`${BASE_URL}/chat/sessions/:id`, ({ params }) => HttpResponse.json({
+    data: {
+      id: params.id,
+      document_id: '11111111-1111-1111-1111-111111111111',
+      document_filename: 'test.pdf',
+      title: 'Data Retention Policy',
+      created_at: '2024-01-01T00:00:00Z',
+      last_message_at: '2024-01-02T10:00:00Z',
+      messages: [
+        {
+          id: '66666666-6666-6666-6666-666666666666',
+          role: 'user',
+          content: 'What are the retention requirements?',
+          citations: [],
+          created_at: '2024-01-02T09:00:00Z',
+        },
+        {
+          id: '77777777-7777-7777-7777-777777777777',
+          role: 'assistant',
+          content: 'Data must be retained for 5 years.',
+          citations: [],
+          created_at: '2024-01-02T09:01:00Z',
+        },
+      ],
+    },
+    error: null,
+  })),
+
   // Chat
   http.post(`${BASE_URL}/chat`, () => HttpResponse.json({
     data: {
