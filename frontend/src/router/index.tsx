@@ -28,7 +28,7 @@ export function createRouter(ctx: RouterContext) {
       ),
     },
     {
-      path: '/chat/:documentId',
+      path: '/chat/:sessionId',
       element: (
         <ProtectedRoute>
           <UnifiedChatPage dark={ctx.dark} setDark={ctx.setDark} />

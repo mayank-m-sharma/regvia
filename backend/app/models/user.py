@@ -1,10 +1,14 @@
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.chat_session import ChatSession
 
 
 class User(UUIDMixin, TimestampMixin, Base):
@@ -18,7 +22,9 @@ class User(UUIDMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # chat_sessions relationship added in REGVIA-029 when ChatSession.user_id FK exists
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        "ChatSession", back_populates="user"
+    )
 
     __table_args__ = (
         Index("ix_users_google_sub", "google_sub", unique=True),
